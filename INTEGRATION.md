@@ -20,11 +20,10 @@ OpenCode 是否加载 OMO 取决于自己的安装和配置，不由本项目安
 
 ## 获取源码
 
-从仓库页面 **Code → Clone** 获取实际地址，或下载 ZIP 解压。首次公开发布地址确定前，以下为需要替换的模板：
+从仓库页面 **Code → Clone** 获取实际地址，或下载 ZIP 解压：
 
 ```bash
-# 把地址替换为实际 GitHub 仓库地址
-ORCH_REPO_URL='https://github.com/OWNER/kumi.git'
+ORCH_REPO_URL='https://github.com/Finn-ASTC/kumi.git'
 git clone "$ORCH_REPO_URL" kumi
 cd kumi
 ```
