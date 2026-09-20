@@ -2,6 +2,7 @@
 """Persistent run storage and read-only recovery across immutable watch inventories."""
 
 import argparse
+from collections import Counter
 import hashlib
 import json
 import os
@@ -9,6 +10,7 @@ from pathlib import Path
 import re
 import sys
 import tempfile
+import time
 from typing import Any
 import uuid
 
@@ -334,6 +336,90 @@ def recover(run_path: str | Path, limit: int = 20, action_offset: int = 0,
                     "use per-target last_successful_check_at. Queue offsets reset after changes."}
 
 
+SUMMARY_SUCCESS_MAX_AGE = 30
+
+
+def watch_diagnostics(watcher: dict[str, Any], now: float) -> dict[str, int]:
+    """Count retained observations, not live coverage or unique active jobs."""
+    import watch
+
+    counts = {"targets": len(watcher["targets"]),
+              "observer_inactive": int(not watcher["observer_active"]),
+              "unreadable_watches": int("error" in watcher),
+              "read_errors": 0, "state_unknown": 0, "state_dead": 0,
+              "state_unrecognized": 0, "success_missing": 0,
+              "success_stale": 0, "success_future": 0}
+    for target in watcher["targets"]:
+        state = target["state"]
+        if not isinstance(state, str) or state not in watch.STATES:
+            counts["state_unrecognized"] += 1
+        elif state in ("unknown", "dead"):
+            counts["state_" + state] += 1
+        counts["read_errors"] += int(bool(target["last_error"]))
+        success = target["last_successful_check_at"]
+        if success is None:
+            counts["success_missing"] += 1
+        elif success > now:
+            counts["success_future"] += 1
+        elif now - success >= SUMMARY_SUCCESS_MAX_AGE:
+            counts["success_stale"] += 1
+    return counts
+
+
+def recover_summary(run_path: str | Path, limit: int = 20, action_offset: int = 0,
+                    waiting_offset: int = 0, job_id: str | None = None,
+                    now: float | None = None, *, job_offset: int = 0,
+                    watch_offset: int = 0, error_offset: int = 0) -> dict[str, Any]:
+    """Project one full recovery into bounded pages; no cache or I/O savings.
+
+    Counts include off-page records. Pending review payloads remain intact, so
+    page limits bound row counts rather than bytes. This is not a work checkpoint.
+    """
+    import reviews
+
+    protocol.require(all(type(v) is int and v >= 0 for v in (job_offset, watch_offset, error_offset)),
+                     "invalid summary offset")
+    current = time.time() if now is None else now
+    reviews.timestamp(current)
+    full = recover(run_path, limit, action_offset, waiting_offset, job_id, current)
+    summary = {k: v for k, v in full.items() if k not in ("run", "jobs", "rounds", "watches", "errors")}
+    summary.update(mode="summary", checked_at=current,
+                   success_max_age_seconds=SUMMARY_SUCCESS_MAX_AGE,
+                   run={k: full["run"][k] for k in ("run_id", "run_path", "index_path")},
+                   counts={**full["counts"], **{k: len(full[k]) for k in ("jobs", "rounds", "watches", "errors")},
+                           "unindexed_rounds": sum(not r["indexed_job"] for r in full["rounds"])})
+    summary["job_counts"] = {
+        "unreadable": sum(j.get("state") == "unreadable" for j in full["jobs"]),
+        "closed": sum(j.get("closed") is not None for j in full["jobs"]),
+        "submission": dict(Counter(j["submission"] for j in full["jobs"] if "submission" in j)),
+        "result_status": dict(Counter(j["result_status"] for j in full["jobs"] if "result_status" in j)),
+        "monitor_expired": sum(j.get("monitor_expired") is True for j in full["jobs"]),
+        "monitor_unknown": sum(j.get("monitor_expired") is None for j in full["jobs"])}
+    # Initialize with the same fixed keys even if there are no readable watches.
+    health = dict.fromkeys(watch_diagnostics({"targets": [], "observer_active": True}, current), 0)
+    watch_rows = []
+    for index, watcher in enumerate(full["watches"]):
+        diagnostics = watch_diagnostics(watcher, current)
+        for key, count in diagnostics.items():
+            health[key] += count
+        if watch_offset <= index < watch_offset + limit:
+            watch_rows.append({k: v for k, v in watcher.items() if k != "targets"} |
+                              {"health": diagnostics})
+    summary["health"] = health
+    summary["watches"] = watch_rows
+    summary["jobs"] = [{k: v for k, v in j.items() if k != "completion"}
+                       for j in full["jobs"][job_offset:job_offset + limit]]
+    summary["errors"] = full["errors"][error_offset:error_offset + limit]
+    for key, offset, name in (("jobs", job_offset, "job"), ("watches", watch_offset, "watch"),
+                              ("errors", error_offset, "error")):
+        summary["more_" + key] = len(full[key]) > offset + limit
+        summary["next_" + name + "_offset"] = offset + len(summary[key])
+    summary["note"] += (" Summary pages bound rows, not bytes or disk reads. Health includes retained historical "
+                        "watches and is diagnostic only; use supervision.py before independent work. "
+                        "Reset all offsets after state changes; use full recover for round/target/completion details.")
+    return summary
+
+
 def main() -> int:
     """Manage run handles and read compact recovery queues without terminal I/O."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -356,6 +442,10 @@ def main() -> int:
     recovering.add_argument("--limit", type=int, default=20)
     recovering.add_argument("--action-offset", type=int, default=0)
     recovering.add_argument("--waiting-offset", type=int, default=0)
+    recovering.add_argument("--summary", action="store_true", help="page all displayed collections; still scans full recovery")
+    recovering.add_argument("--job-offset", type=int, default=0, help="summary jobs page offset")
+    recovering.add_argument("--watch-offset", type=int, default=0, help="summary watches page offset")
+    recovering.add_argument("--error-offset", type=int, default=0, help="summary errors page offset")
     args = parser.parse_args()
     try:
         if args.command == "init":
@@ -369,7 +459,14 @@ def main() -> int:
             value = {"run_path": str(Path(args.run).resolve()), "request_path": str(Path(args.request).resolve()),
                      "submission_inferred": False, "executes_commands": False}
         else:
-            value = recover(args.run, args.limit, args.action_offset, args.waiting_offset, args.job)
+            if args.summary:
+                value = recover_summary(args.run, args.limit, args.action_offset, args.waiting_offset, args.job,
+                                        job_offset=args.job_offset, watch_offset=args.watch_offset,
+                                        error_offset=args.error_offset)
+            else:
+                protocol.require(not (args.job_offset or args.watch_offset or args.error_offset),
+                                 "job/watch/error offsets require --summary")
+                value = recover(args.run, args.limit, args.action_offset, args.waiting_offset, args.job)
         print(json.dumps(value, ensure_ascii=False, allow_nan=False))
         return 0
     except FileNotFoundError as exc:

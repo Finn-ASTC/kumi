@@ -87,11 +87,12 @@ The script retains four-second subprocess read timeouts and at most eight observ
 
 ### Durable pending reviews
 
-For a managed run, start with `runs.py recover --run "$RUN_FILE"` to aggregate this
+For a managed run, start with `runs.py recover --run "$RUN_FILE" --summary --limit 10` to aggregate this
 queue across current and old registered watches, including previous waiting-user
 notes. Use each returned watch_path + seq for review commands below. See
-[run recovery](runs.md) for global event references, independent queue pages, partial
-read failures, and observer activity versus successful-check timestamps.
+[run recovery](runs.md) for independent pages, full-detail drill-down, partial
+read failures, and observer activity versus successful-check timestamps. Summary
+bounds displayed rows; it still scans full recovery and does not grant a work budget.
 
 Use this queue on resume and between work blocks. Event delivery and actual handling have separate state: advancing `events`/`wait` cursors never clears an unresolved review.
 

@@ -130,6 +130,62 @@ Exit 0 means the recovery command ran, including a partial response with errors.
 observers are healthy or targets finished. An observation failure recorded correctly
 can coexist with `complete=true`; inspect health fields separately.
 
+## Compact recovery for routine inspection
+
+```bash
+python3 "$RUNS_TOOL" recover --run "$RUN_FILE" --summary --limit 10
+```
+
+`--summary` is opt-in. Without it, recovery keeps its full jobs/rounds/watches output
+and only pages the two pending queues. Summary still reads the entire recovery;
+it reduces displayed rows, not disk scanning, and is not a delta query.
+
+Summary retains `run_id`, `run_path`, `index_path`, `complete`, and the exact pending
+review payloads (including notes, revisions, related reviews and evidence handles).
+It omits round rows and detailed job completion records. Each watch row contains
+diagnostic counts instead of its target array. All five displayed lists are
+independently limited by `--limit` (1–200):
+
+| List | More flag | Next offset | CLI option |
+|---|---|---|---|
+| `jobs` | `more_jobs` | `next_job_offset` | `--job-offset` |
+| `watches` | `more_watches` | `next_watch_offset` | `--watch-offset` |
+| `errors` | `more_errors` | `next_error_offset` | `--error-offset` |
+| `action_required` | `more_action_required` | `next_action_offset` | `--action-offset` |
+| `waiting_user` | `more_waiting_user` | `next_waiting_offset` | `--waiting-offset` |
+
+Keep the same run/filter/limit while paging; pass each returned next offset only
+when its more flag is true. Nonzero job/watch/error offsets require `--summary`.
+Start all offsets at zero on each inspection cycle and after any record change.
+These are reads of changing storage, not a frozen snapshot or durable cursors.
+Long notes/errors retain their content: row bounds are not a strict byte/token cap.
+
+`counts` includes all matching readable jobs/rounds/watches, unindexed rounds,
+pending totals and all run-wide errors, even beyond the displayed pages.
+`job_counts` includes unreadable/closed jobs, submissions, results and expired or
+unknown monitor bindings. `health` aggregates all selected retained watches,
+including historical watches and repeated targets: inactive observer locks,
+unreadable health files, read errors, unknown/dead/unrecognized states, and
+missing/stale/future success timestamps. Age uses `checked_at` at recovery start;
+`success_stale` means at least `success_max_age_seconds` (30 seconds) old.
+Time-based diagnostics recompute on every call even without file changes.
+
+`--job` scopes these records/counts while retaining run-wide integrity errors.
+When `complete=false`, totals only describe records recovered successfully;
+unreadable targets are not counted as healthy or inferred from a missing array.
+An empty error page does not override `counts.errors` or `complete=false`.
+Even `complete=true` with zero diagnostic counters is **not a supervision gate**:
+summary does not validate monitor ownership, actual observer lifetime or current
+coverage. Use the [supervision checkpoint](supervision.md) before independent work.
+
+For round/target/completion detail, use full recovery scoped to the job, then read
+the exact watch occurrence before acting:
+
+```bash
+python3 "$RUNS_TOOL" recover --run "$RUN_FILE" --job "$JOB_ID" --limit 10
+python3 "$WATCH_TOOL" review-status --watch "$WATCH_FILE" --seq "$SEQ"
+```
+
 ## Separate monitoring health from recovered records
 
 `observer_active` is a read-only snapshot of the watch's existing lock. A sweep or a
