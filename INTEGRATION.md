@@ -1,4 +1,4 @@
-# 部署与接入说明
+# kumi 部署与接入说明
 
 这是一套安装到现有终端 agent 的 skills 和本地工具。**直接使用本仓库即可，无需额外的管理脚本或另一份管理仓库。** 基本使用见 [README](README.md)，任务操作见[使用指南](USAGE.md)。
 
@@ -24,12 +24,14 @@ OpenCode 是否加载 OMO 取决于自己的安装和配置，不由本项目安
 
 ```bash
 # 把地址替换为实际 GitHub 仓库地址
-ORCH_REPO_URL='https://github.com/OWNER/REPOSITORY.git'
-git clone "$ORCH_REPO_URL" agent-orchestrator
-cd agent-orchestrator
+ORCH_REPO_URL='https://github.com/OWNER/kumi.git'
+git clone "$ORCH_REPO_URL" kumi
+cd kumi
 ```
 
 软链接安装需要保留这份目录；建议放在固定位置。ZIP 和复制分发同样支持安装，不要求有 `.git/`。
+
+仓库名为 `kumi`，宿主发现的六个 skill 名称保持不变；主 skill 仍为 `agent-orchestrator`，任务状态仍使用原有 `agent-orchestrator` 路径。
 
 ## 选择安装目标
 

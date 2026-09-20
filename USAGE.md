@@ -1,4 +1,4 @@
-# 使用指南
+# kumi 使用指南
 
 先按[部署与接入说明](INTEGRATION.md)安装六个 skills，并确认要使用的 CLI 能独立运行。以下自然语言请求交给**调度 agent**执行；它应加载 `agent-orchestrator`，再按目标读取宿主字典。日常使用不需要 E2E runner。
 

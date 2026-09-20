@@ -1,17 +1,17 @@
-# 发布与维护
+# kumi 发布与维护
 
 本源码包使用独立 Git 历史，包含六个完整 skills、安装脚本、MIT 许可证、通用文档、可复用测试和 CI。私人实验记录、原生会话、凭据及本体补丁不属于发布内容。
 
 ## 第一次推送到 GitHub
 
-在 GitHub 创建一个空仓库，不勾选自动生成 README、LICENSE 或 .gitignore，本地已有这些文件。从**这个公开副本的根目录**执行以下步骤。
+在 GitHub 创建名为 **kumi** 的空仓库，不勾选自动生成 README、LICENSE 或 .gitignore，本地已有这些文件。从**这个公开副本的根目录**执行以下步骤。
 
-1. 将 `INTEGRATION.md` 获取源码示例中的 `OWNER/REPOSITORY` 替换为真实地址，并提交该修改。
+1. 将 `INTEGRATION.md` 获取源码示例中的 `OWNER` 替换为实际 GitHub 用户或组织名，并提交该修改。
 2. 检查 `git status`、`git log --oneline` 和 `git ls-files`，确认提交及文件范围。
 3. 将下面的明确占位地址替换为新仓库地址，然后添加远端并推送：
 
 ```bash
-ORCH_REMOTE_URL='https://github.com/OWNER/REPOSITORY.git'
+ORCH_REMOTE_URL='https://github.com/OWNER/kumi.git'
 git remote add origin "$ORCH_REMOTE_URL"
 git push -u origin main
 ```

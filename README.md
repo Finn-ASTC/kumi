@@ -1,8 +1,10 @@
-# Agent Orchestrator
+# kumi
 
 让一个终端 agent 通过 **herdr / tmux** 调用其他 agent：派发任务、并行推进、处理权限和追问、恢复中断任务，再独立验证交付。
 
 支持 **omp（oh-my-pi）、Hermes、OpenCode / OMO、Codex** 之间的协作。项目由六个 skills 和标准库 Python 辅助工具组成，安装到已有 agent 中使用；无需部署 Web 服务或常驻调度服务，可直接从本仓库安装，无需额外的 skill 管理仓库。
+
+**kumi** 是项目和仓库名称。安装后的主 skill 仍叫 `agent-orchestrator`；六个 skill 名称、命令与任务状态路径保持兼容，下文派单时使用实际 skill 名称。
 
 ```text
 调度 agent ──准备任务契约──→ herdr / tmux ──→ 子 agent
