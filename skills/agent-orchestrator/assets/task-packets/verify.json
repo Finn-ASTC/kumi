@@ -1,0 +1,20 @@
+{
+  "objective": "Independently assess the invoice delivery against contract.md and the pinned oracle.",
+  "scope": "Read only the source snapshot named in verification-inputs.json. Own this round's fresh verification evidence directory; no author source edits.",
+  "acceptance": [
+    "Check snapshot and fixture hashes, then run the verifier checks in acceptance-plan.json in a fresh source/build/cache/evidence attempt; test an oracle's rejection of a known-invalid output before relying on it.",
+    "Account for every required delivery configuration and gate in acceptance-plan.json; exercise the actual delivered artifact and report its path/hash. Development test counts alone do not accept a differently configured delivery.",
+    "Report product verdict separately from protocol status, with snapshot path/hash, oracle identity, commands, actual exits and attempt path.",
+    "A failed check returns a defect and reproducer without changing fixtures; a spec/oracle conflict returns blocked with both expectations and the minimal example."
+  ],
+  "inputs": ["contract.md", "acceptance-plan.json", "verification-inputs.json"],
+  "known_facts": [
+    "Dependency: author has yielded the exact snapshot in verification-inputs.json. That record pins oracle version, environment, fixture paths/hashes and fresh evidence parent.",
+    "Test owner: verifier maintains independent oracle fixtures; fixture changes require controller decision and a new pinned version."
+  ],
+  "constraints": [
+    "If the snapshot is not ready, prepare fixtures in the verifier's own directory and report preparation only; acceptance waits for a fixed handoff.",
+    "Preserve original failed attempts. Controller owns integrated project gates and final acceptance; successful review execution can still reject the product.",
+    "Report each gate as passed, failed, timeout, not_run, not_applicable or excluded with evidence/reason, owner and remaining action. Missing or unrun required coverage prevents product acceptance; controller resolves scope changes before revalidation."
+  ]
+}

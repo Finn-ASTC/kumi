@@ -1,0 +1,25 @@
+{
+  "commands": [
+    {"argv": ["rustc", "-vV"], "timeout_seconds": 10},
+    {"argv": ["cargo", "--version"], "timeout_seconds": 10},
+    {"argv": ["python3", "--version"], "timeout_seconds": 10},
+    {"argv": ["cargo", "test", "--locked", "--offline"], "timeout_seconds": 60},
+    {"argv": ["cargo", "build", "--release", "--locked", "--offline"], "timeout_seconds": 60},
+    {"argv": ["cargo", "test", "--release", "--locked", "--offline"], "timeout_seconds": 60},
+    {
+      "argv": ["python3", "-c", "import subprocess, sys\nfor args, expected in [([], '0\\n'), (['alpha', 'beta', 'gamma'], '3\\n')]:\n    result = subprocess.run([sys.argv[1], *args], capture_output=True, text=True, timeout=5)\n    if (result.returncode, result.stdout, result.stderr) != (0, expected, ''):\n        raise SystemExit(repr((args, result.returncode, result.stdout, result.stderr)))\n    print(repr(args), 'passed')", "{build}/cargo/release/item-count"],
+      "timeout_seconds": 15
+    }
+  ],
+  "artifacts": ["build/cargo/release/item-count"],
+  "dependencies": {"rustc": null, "cargo": null, "python3": null},
+  "environment": {
+    "CARGO_HOME": "{cache}/cargo-home",
+    "CARGO_TARGET_DIR": "{build}/cargo",
+    "CARGO_PROFILE_DEV_DEBUG_ASSERTIONS": "true",
+    "CARGO_PROFILE_TEST_DEBUG_ASSERTIONS": "true",
+    "CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS": "false",
+    "RUSTFLAGS": "",
+    "CARGO_ENCODED_RUSTFLAGS": ""
+  }
+}

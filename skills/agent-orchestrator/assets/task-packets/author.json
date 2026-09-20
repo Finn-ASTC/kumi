@@ -1,0 +1,19 @@
+{
+  "objective": "Implement CSV invoice totals according to contract.md.",
+  "scope": "Author owns totals.py and test_totals.py. money.py belongs to the controller; verifier fixtures are read-only.",
+  "acceptance": [
+    "Implement the contract and run the author checks named in acceptance-plan.json; report results and evidence paths.",
+    "Identify the delivered target and required build/feature/platform/runtime configurations from acceptance-plan.json. Report each assigned gate and artifact check, with command, timeout, result and evidence; missing coverage is not a pass.",
+    "At handoff, stop owned writers and list changed files and unresolved dependencies. Controller owns integration and final acceptance."
+  ],
+  "inputs": ["contract.md", "acceptance-plan.json", "money.py"],
+  "known_facts": [
+    "Dependency: money.to_cents is available but not independently accepted. Independent verifier fixture preparation may proceed concurrently."
+  ],
+  "constraints": [
+    "If the dependency prevents acceptance, report the reproducer and requested scope as blocked; preserve partial work.",
+    "Test owner: author maintains test_totals.py. Existing characterization/ignored tests in test_money.py remain controller-owned pending explicit rework assignment.",
+    "Record inapplicable configurations with reasons, and exclusions or unrun gates with owner and closure condition. Missing delivery requirements must be resolved by the controller before claiming acceptance.",
+    "For a published report error, preserve the response and notify the controller in normal output; a corrected response waits for a controller-issued new round/path."
+  ]
+}

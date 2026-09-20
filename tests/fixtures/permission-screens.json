@@ -1,0 +1,47 @@
+{
+  "description": "Reduced, sanitized excerpts from the 2026-09-20 Codex/omp experiments; no live paths or identities. These are regression examples, not a complete UI corpus.",
+  "samples": [
+    {
+      "name": "codex-request-echo",
+      "source": "repeated-approval evidence 5",
+      "state": "working",
+      "attention": false,
+      "screen": "  REQUEST={\"task\":\"完成三步独立权限动作；若沙箱拒绝则为该命令原生申请单次权限，不设 prefix_rule，不改变审批设置。\"}\n\n◦ Working (1s • esc to interrupt)\n\n› Ask Codex to do anything"
+    },
+    {
+      "name": "codex-task-and-tool-output",
+      "source": "repeated-approval evidence 6",
+      "state": "working",
+      "attention": false,
+      "screen": "  令，不合并；若沙箱拒绝则为该命令原生申请单次权限，不设 prefix_rule，不改变审批设置。\n\n• I'll read only the cwd inputs (skipping sibling/controller files as the task requires).\n\n• Ran head -c 1200 batches.json\n  └ [[9216, -816, -5814]]\n\n◦ Working (27s • esc to interrupt)\n\n› Ask Codex to do anything"
+    },
+    {
+      "name": "codex-permission-prose",
+      "source": "repeated-approval evidence 8",
+      "state": "working",
+      "attention": false,
+      "screen": "  令，不合并；若沙箱拒绝则为该命令原生申请单次权限，不设 prefix_rule，不改变审批设置。\n\n• Now the three permission actions in order, starting with a sandbox-native attempt for a.txt (plus the read-only stats).\n\n• Working (29s • esc to interrupt)\n\n› Ask Codex to do anything"
+    },
+    {
+      "name": "omp-validation-answer",
+      "source": "checkpoint-native evidence 5/6",
+      "state": "idle",
+      "attention": false,
+      "screen": "输入分类：\n| 输入 | 结果 |\n| true | 拒绝 |\n| 0 | 接受 |\n| 1 | 接受 |\n| -1 | 接受 |\n| 2.5 | 拒绝 |\n| \"3\" | 拒绝 |\n\n非整数值应拒绝。"
+    },
+    {
+      "name": "codex-native-a",
+      "source": "repeated-approval evidence 10",
+      "state": "blocked",
+      "attention": true,
+      "screen": "• Sandbox denied the write, as expected. Requesting one-time native permission for step a (no prefix rule).\n\n  Would you like to run the following command?\n\n  Environment: local\n\n  Reason: Allow this single command to write marker A to /fixture/approval/a.txt\n  (outside the sandbox writable roots)? One-time only, no persistent rule.\n\n  $ printf A > /fixture/approval/a.txt\n\n› 1. Yes, proceed (y)\n  2. Yes, and don't ask again for commands that start with `printf A > /fixture/\n     approval/a.txt` (p)\n  3. No, and tell Codex what to do differently (esc)\n\n  Press enter to confirm or esc to cancel"
+    },
+    {
+      "name": "codex-after-approval",
+      "source": "repeated-approval post-action confirmation shape",
+      "state": "working",
+      "attention": false,
+      "screen": "✔ You approved codex to run printf A > /fixture/approval/a.txt this time\n\n• Ran printf A > /fixture/approval/a.txt\n  └ (no output)\n\n• Working (1s • esc to interrupt)\n\n› Ask Codex to do anything"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+/.venv/
+
+# Local credentials; keep deliberately sanitized examples available
+.env
+.env.*
+!.env.example
+
+# Task state and private experiment output, if placed in this checkout
+/.orch/
+/private/
+/sandbox/
+/artifacts/
+/release-evidence/
+/orch-run-*/
+/runner-demo-*/
+/orch-e2e-*/
+*.result.json
+
+# Ignore rules do not remove files already tracked or erase Git history.

@@ -1,0 +1,20 @@
+{
+  "objective": "Fix the exact-cent defect recorded in defect.json, then yield a new delivery for independent revalidation.",
+  "scope": "Author now owns money.py and test_money.py as well as totals.py and test_totals.py. Frozen verifier fixtures and old delivery evidence are read-only.",
+  "acceptance": [
+    "Reproduce defect.json's failure in a fresh writable copy of its pinned failing snapshot before correcting current author source; put generated files/caches outside the stored snapshot.",
+    "Replace the obsolete 0.29 -> 28 characterization with the contract's 29-cent behavior. Author owns this replacement.",
+    "Author owns the skipped negative-cent test: reactivate it and report its actual result, or report blocked with the remaining cause and owner; a skip is not a pass.",
+    "Run author gates from acceptance-plan.json and yield changed files. Verifier reuses the original fixture hashes against a fresh snapshot; controller reruns integrated gates.",
+    "Reproduce with the failing build/feature/platform/runtime configuration, then revalidate every required delivery configuration and the actual artifact. Retain original failure/timeout evidence and report fresh attempt and artifact hashes; record unrun or excluded gates with reason, owner and closure condition."
+  ],
+  "inputs": ["contract.md", "acceptance-plan.json", "defect.json"],
+  "known_facts": [
+    "Dependency: original verification failed; defect.json pins the failing source, attempt, fixture hashes and reproduction command. Controller has granted the parser/test ownership above."
+  ],
+  "constraints": [
+    "Keep old source, failure logs and fixture versions intact. Any spec/oracle disagreement is blocked with concrete evidence before changing expected behavior.",
+    "Related continuation uses the same author job and native conversation with a fresh round; handoff does not itself establish product acceptance or host settling.",
+    "For a published report error, preserve the response and notify the controller in normal output; a corrected response waits for a controller-issued new round/path."
+  ]
+}

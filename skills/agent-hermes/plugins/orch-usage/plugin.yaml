@@ -1,0 +1,9 @@
+name: orch-usage
+version: "1.0.0"
+description: "Opt-in local request usage receipts for agent-orchestrator; no conversation capture or network export."
+hooks:
+  - pre_llm_call
+  - pre_api_request
+  - post_api_request
+  - api_request_error
+  - on_session_end
