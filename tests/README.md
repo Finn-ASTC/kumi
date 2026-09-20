@@ -5,6 +5,7 @@
 | 文件 | 分类 | 如何使用 |
 |---|---|---|
 | `test_*.py` | 自动回归 | unittest discover；大部分离线，真实 tmux 测试显式启用 |
+| `test_runs.py` | 持久恢复回归 | 包含 B1 发现的原生空元数据目录误报；保留非空/符号链接/未登记任务报警，[原生监督报告](../docs/B1-SUPERVISION.md)另列真实模型实验的失败与边界 |
 | `test_recovery_summary.py` | C1 恢复摘要回归 | 多规模分页、页外错误与健康、旧问题/新权限身份、只读与时间过期；[验证记录](../docs/C1-RECOVERY.md) |
 | `test_recovery_delta.py`、`recovery_benchmark.py` | C2 增量恢复回归与规模测量 | 续读/缓存失效、丢失输出、分页积压与断点；benchmark 在独立父目录保留无模型夹具，支持 `--skills-root`；[验证记录](../docs/C2-RECOVERY.md) |
 | `test_usage_sources.py` | 来源绑定审计回归 | run 历史/漏绑、原生父子关系、四宿主证据边界、轮次/账本 scope 与有效计数核对；无模型调用 |

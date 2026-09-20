@@ -315,6 +315,18 @@ def recover(run_path: str | Path, limit: int = 20, action_offset: int = 0,
                                   (run["watches_root"], "watch.json", known_watches)):
         for child in sorted(Path(root).iterdir()):
             if child.is_dir():
+                # Native workspace-write setup can create these empty metadata
+                # directories in an additional writable root. Do not mistake
+                # them for failed attachments. Keep nonempty directories,
+                # symlinks and every other name visible, including unfinished
+                # managed directories whose manifest is still missing.
+                if child.name in {".agents", ".codex", ".git"} and not child.is_symlink():
+                    try:
+                        if not any(child.iterdir()):
+                            continue
+                    except OSError:
+                        # Unreadable is not empty; retain the normal error below.
+                        pass
                 path = str(child / filename)
                 if path not in known:
                     errors.append({"path": path, "error": "unregistered run artifact; reconcile or retry its attachment"})

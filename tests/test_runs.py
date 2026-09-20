@@ -283,6 +283,52 @@ class RunTests(ToolCase):
         self.assertFalse(json.loads(restored.stdout)["submission_inferred"])
         self.assertTrue(runs.recover(run["run_path"])["complete"])
 
+    def test_empty_native_sandbox_metadata_does_not_make_recovery_incomplete(self):
+        _, run = self.managed()
+        for name in (".agents", ".codex", ".git"):
+            (Path(run["rounds_root"]) / name).mkdir()
+        recovered = runs.recover(run["run_path"])
+        self.assertTrue(recovered["complete"], recovered["errors"])
+        self.assertEqual(recovered["errors"], [])
+
+    def test_metadata_exception_preserves_nonempty_and_unknown_orphans(self):
+        _, run = self.managed()
+        root = Path(run["rounds_root"])
+        for name in (".agents", ".codex", ".git"):
+            directory = root / name
+            directory.mkdir()
+            (directory / "request.json").write_text("broken request")
+        for name in (".unknown", "agent-orchestrator-unfinished"):
+            (root / name).mkdir()
+        recovered = runs.recover(run["run_path"])
+        self.assertFalse(recovered["complete"])
+        self.assertEqual({Path(e["path"]).parent.name for e in recovered["errors"]},
+                         {".agents", ".codex", ".git", ".unknown", "agent-orchestrator-unfinished"})
+
+    def test_empty_metadata_symlink_is_not_silently_ignored(self):
+        _, run = self.managed()
+        empty = self.root / "unrelated-empty"
+        empty.mkdir()
+        (Path(run["rounds_root"]) / ".codex").symlink_to(empty, target_is_directory=True)
+        self.assertFalse(runs.recover(run["run_path"])["complete"])
+
+    def test_unreadable_native_metadata_remains_an_explicit_recovery_error(self):
+        _, run = self.managed()
+        metadata = Path(run["rounds_root"]) / ".codex"
+        metadata.mkdir()
+        original = Path.iterdir
+
+        def inspect(path):
+            if path == metadata:
+                raise PermissionError("metadata is not readable")
+            return original(path)
+
+        with patch.object(Path, "iterdir", inspect):
+            recovered = runs.recover(run["run_path"])
+        self.assertFalse(recovered["complete"])
+        self.assertEqual([e["path"] for e in recovered["errors"]],
+                         [str(metadata / "request.json")])
+
     def test_waiting_pagination_missing_health_and_read_only_recovery(self):
         info, run = self.managed()
         self.record_for(info)
