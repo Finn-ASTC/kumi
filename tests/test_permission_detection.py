@@ -16,6 +16,42 @@ class PermissionDetectionTests(ToolCase):
     make_watch = test_supervision.SupervisionTests.make_watch
     poll = test_supervision.SupervisionTests.poll
 
+    def test_stale_blocked_without_prompt_requests_review_without_claiming_dialog(self):
+        handle = self.make_watch()
+        prompt = 'Would you like to run the following command?\n$ probe\n1. Yes, proceed (y)\n2. No (esc)'
+        self.assertIn('attention', [e['kind'] for e in self.poll(handle, prompt, 0, state='blocked')])
+        screen = ('✔ You approved codex to run probe this time\n'
+                  '• Waiting for background terminal (1s)\n› Ask Codex to do anything')
+        events = self.poll(handle, screen, 1, state='blocked')
+        self.assertNotIn('attention', [e['kind'] for e in events])
+        review = next(e for e in events if e['kind'] == 'review_due')
+        self.assertEqual(review['confidence'], 'unconfirmed_blocked')
+        self.assertNotIn('attention', [e['kind'] for e in self.poll(handle, screen.replace('1s', '2s'), 2, state='blocked')])
+        self.assertIn('review_due', [e['kind'] for e in self.poll(handle, screen.replace('1s', '31s'), 31, state='blocked')])
+        self.assertIn('attention', [e['kind'] for e in self.poll(handle, prompt.replace('probe', 'other'), 32, state='blocked')])
+
+    def test_unknown_blocked_still_has_immediate_review_and_input_remains_blocked(self):
+        handle = self.make_watch()
+        events = self.poll(handle, 'Vendor-specific unresolved question', 0, state='blocked')
+        self.assertIn('state_changed', [e['kind'] for e in events])
+        self.assertIn('review_due', [e['kind'] for e in events])
+        self.assertTrue(reviews.pending(handle, now=1)['action_required'])
+        self.assertIsNotNone(watch.dialog_key('Vendor-specific unresolved question', 'blocked'))
+
+    def test_blind_interval_requires_fresh_unconfirmed_blocked_review(self):
+        config = {'review_interval': 30, 'stall_after': 120, 'deadline': None}
+        old = {}
+        sample = {'state': 'blocked', 'screen': 'Waiting for background terminal'}
+        first = watch.signals(sample, old, 0, config)
+        self.assertIn('review_due', [kind for kind, _ in first])
+        issue = old['fallback_issue']
+        self.assertEqual(watch.signals(sample, old, 1, config), [])
+        watch.signals({'error': 'read failed'}, old, 2, config)
+        recovered = watch.signals(sample, old, 3, config)
+        self.assertIn('review_due', [kind for kind, _ in recovered])
+        self.assertNotIn('attention', [kind for kind, _ in recovered])
+        self.assertNotEqual(issue, old['fallback_issue'])
+
     def test_sanitized_native_screens(self):
         fixture = Path(__file__).parent / 'fixtures' / 'permission-screens.json'
         for sample in json.loads(fixture.read_text())['samples']:

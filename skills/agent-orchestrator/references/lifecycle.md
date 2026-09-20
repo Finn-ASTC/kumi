@@ -54,6 +54,10 @@ At each manual sweep, or when reconciling an observer event:
 
 Keep local tools interruptible: launch long tests/builds using a supported managed background handle or short yielding call, then inspect child agents between polls. A 5-minute blocking tool call or wait cannot meet the supervision schedule. When no local work remains, use waits of about 15 seconds and recheck every child afterward; do not wait indefinitely or watch only one target. Readiness checks before sending input are still required.
 
+For an authorized append-only business log, the [checkpoint waiter](supervision.md#waiting-for-native-checkpoints)
+can return on a complete marker line while the original process keeps running.
+Retain its byte cursor and the original managed process handle; timeout is not cancellation.
+
 `protocol.py` has no timer. `watch.py run` polls only while its managed process remains alive and within its duration; its files do not automatically notify a model. Ending the controller turn requires an actual supported event/monitor handoff or an accurate retained handle as described below. Do not claim continuous supervision without such a mechanism.
 
 ## Async submission and handoff

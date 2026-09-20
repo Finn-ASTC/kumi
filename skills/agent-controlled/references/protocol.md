@@ -90,13 +90,26 @@ The validator checks shape, identity, path containment, and optionally existence
 
 ## Publishing without a partial or overwritten response
 
-When this repository's helper is accessible, create a candidate JSON file using normal file-editing tools and run:
+Generated prompts include `PUBLICATION_ARGV`, a JSON argv pointing to the exact
+helper and request. Execute it without a shell, serialize the response on stdin,
+then close stdin. `--input -` accepts one UTF-8 object up to 16 MiB and uses the same
+strict validation as file input. This avoids copying the result destination and
+requires no scratch candidate. Explicit stdin still waits for EOF.
+
+If using an existing candidate file, keep it within the task's authorized write
+scope (for example the exact round directory when permitted) and run:
 
 ```bash
 python3 "$ORCH_TOOL" write-result --request "$REQUEST_FILE" --input "$CANDIDATE_FILE"
 ```
 
 The helper validates the response, writes, flushes and fsyncs a temporary file in the result directory, then atomically links it to `result.json`. It refuses to overwrite **any** existing destination. Only the published final name counts as a response; a temporary file never does. Requires a local filesystem supporting hard links; I/O failures are reported, not converted into success.
+
+Keep the literal request/round path. If it is missing or inaccessible, reconcile it
+with the controller; creating a shorter path or writing an unrelated `/tmp` file
+does not repair the reporting channel. The helper preserves native approvals and
+does not grant write access. Prepare prompts after installing the package at its
+final location: the executable/helper paths in the argv refer to that installation.
 
 Without the helper, write UTF-8 JSON to a unique temporary file in the same directory, flush/close it, then atomically publish it. An atomic rename is acceptable with one designated writer after confirming no valid response exists. Never use shell `echo` with unescaped model output; use a JSON serializer. Do not change a valid `blocked` response into `success` at the same path.
 

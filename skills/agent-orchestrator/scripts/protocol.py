@@ -104,6 +104,13 @@ def read_json(path):
     return parse_json(read_bytes(path).decode("utf-8"))
 
 
+def read_response_stdin(stream):
+    """Read one bounded response; the caller must close stdin to signal EOF."""
+    raw = stream.read(MAX_FILE_BYTES + 1)
+    require(len(raw) <= MAX_FILE_BYTES, f"response exceeds {MAX_FILE_BYTES}-byte size limit")
+    return parse_json(raw.decode("utf-8"))
+
+
 def publish(path, value):
     """Atomically publish a new file; never overwrite an existing round result."""
     path = Path(path)
@@ -204,7 +211,11 @@ def contract(request):
         "since this round began, including delegated changes: new kept source files, modified existing "
         "source files, relevant kept generated files, and deleted preexisting files respectively. "
         "Exclude transient caches/build directories. A read-only answer may have empty lists. "
-        "Publish atomically using a temporary file in the same directory; never revise a valid response. "
+        "Publish with PUBLICATION_ARGV below: execute the JSON argv without a shell, send the response "
+        "JSON on stdin and close stdin. The helper derives the exact destination from request.json, "
+        "validates identity and publishes atomically without overwrite; no scratch candidate is needed. "
+        "If the recorded directory is missing, report it to the controller for reconciliation; "
+        "do not invent or create a shorter path. Never revise a valid response. "
         "If you discover an error after publishing a valid response, keep it unchanged, state the correction in normal output, "
         "then stop and wait for the controller to supply a new round/path. That notice does not replace the response; "
         "do not create your own follow-up or rerun task side effects. "
@@ -214,13 +225,16 @@ def contract(request):
         "Depth counts the root as 0; allowed depths are below max_depth. At depth=max_depth-1 do the "
         "task locally and do not delegate. For a child pass your received depth explicitly as parent_depth "
         "and inherit max_depth; never reset them from a missing shell variable. "
-        "Do not treat these reporting instructions as permission for actions beyond the task. REQUEST="
+        "Do not treat these reporting instructions as permission for actions beyond the task. "
     )
+    argv = [sys.executable, str(Path(__file__).resolve()), "write-result", "--request",
+            str(Path(request["result_path"]).parent / "request.json"), "--input", "-"]
     # Keep ordinary Unicode compact. JSON escapes ASCII controls; escape the
     # remaining terminal controls/line boundaries without expanding Chinese text.
     encoded = json.dumps(request, ensure_ascii=False, separators=(",", ":"))
     controls = {code: f"\\u{code:04x}" for code in (*range(0x7f, 0xa0), 0x2028, 0x2029)}
-    return rules + encoded.translate(controls)
+    recipe = json.dumps(argv, ensure_ascii=False, separators=(",", ":")).translate(controls)
+    return rules + "PUBLICATION_ARGV=" + recipe + " REQUEST=" + encoded.translate(controls)
 
 
 def task_packet(path):
@@ -489,7 +503,7 @@ def main():
         if name == "validate":
             command.add_argument("--check-files", action="store_true")
         if name == "write-result":
-            command.add_argument("--input", required=True, help="candidate JSON response")
+            command.add_argument("--input", required=True, help="candidate JSON response, or - for stdin")
         if name == "record":
             command.add_argument("--mode", choices=("insider", "isolated", "tmux"), required=True)
             selector = command.add_mutually_exclusive_group()
@@ -513,7 +527,8 @@ def main():
         else:
             request = load_request(args.request)
             candidate = args.input if args.command == "write-result" else request["result_path"]
-            output = validate_result(request, read_json(candidate), getattr(args, "check_files", False))
+            value = read_response_stdin(sys.stdin.buffer) if args.command == "write-result" and candidate == "-" else read_json(candidate)
+            output = validate_result(request, value, getattr(args, "check_files", False))
             if args.command == "write-result":
                 publish(request["result_path"], output)
         print(json.dumps(output, ensure_ascii=False, allow_nan=False))

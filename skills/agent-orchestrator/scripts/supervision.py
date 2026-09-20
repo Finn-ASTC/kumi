@@ -33,7 +33,8 @@ def coverage_for(state: dict[str, Any], watches: list[dict[str, Any]], now: floa
     monitor = state["monitor"]
     row: dict[str, Any] = {"job_id": state["job_id"], "round_id": state["round_id"],
                           "watch_path": monitor["watch_path"], "owner": monitor["owner"],
-                          "issues": [], "remaining_seconds": None, "last_success_age_seconds": None}
+                          "issues": [], "remaining_seconds": None, "renew_by": None,
+                          "last_success_age_seconds": None}
     issues = row["issues"]
     expiry = monitor["expires_at"]
     if monitor["owner"] is None or monitor["watch_path"] is None or expiry is None:
@@ -56,6 +57,7 @@ def coverage_for(state: dict[str, Any], watches: list[dict[str, Any]], now: floa
         actual_expiry = observer_expiry(watcher["watch_path"], watcher["watch_id"], now)
         remaining = min(actual_expiry, expiry if expiry is not None else actual_expiry) - now
         row["remaining_seconds"] = max(0, remaining)
+        row["renew_by"] = now + remaining - renew_before
         if actual_expiry - now <= renew_before:
             issues.append("observer_expired" if actual_expiry <= now else "observer_expiring")
     except (OSError, ValueError, KeyError, TypeError) as exc:
@@ -83,7 +85,7 @@ def coverage_for(state: dict[str, Any], watches: list[dict[str, Any]], now: floa
 
 
 def check(run_path: str | Path, work_seconds: float = 15, max_age: float = 30,
-          renew_before: float = 30, limit: int = 20, now: float | None = None) -> dict[str, Any]:
+          renew_before: float = 60, limit: int = 20, now: float | None = None) -> dict[str, Any]:
     """Bound the next work block using current queues, freshness and expiry.
 
     Reading is advisory: it neither wakes an ended controller nor guarantees that
@@ -147,7 +149,7 @@ def main() -> int:
     parser.add_argument("--run", required=True)
     parser.add_argument("--work-seconds", type=float, default=15)
     parser.add_argument("--max-age", type=float, default=30)
-    parser.add_argument("--renew-before", type=float, default=30)
+    parser.add_argument("--renew-before", type=float, default=60)
     parser.add_argument("--limit", type=int, default=20)
     args = parser.parse_args()
     try:

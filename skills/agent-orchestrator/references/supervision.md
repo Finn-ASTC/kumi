@@ -28,7 +28,8 @@ internally; this is not a delta or constant-cost query.
 - Inspect open events and their live UI before unrelated work. Return within the
   budget (at most 30 seconds, 15 requested by default), even when useful independent
   work remains. If a long local action is necessary, keep it interruptible through
-  a managed handle and checkpoint between waits.
+  a managed handle and checkpoint between waits. Include model/tool overhead in
+  that budget, not only the requested wait duration.
 - Existing `waiting_user` remains visible without blocking other independent
   work. Read its note before repeating a question; it is not approval for a new
   operation. Paginated details remain available through `runs.py recover`.
@@ -40,15 +41,19 @@ internally; this is not a delta or constant-cost query.
   no-hook input prompt can justify that specific input; it does not establish
   readiness for a long independent work block. Missing/error/expired observation
   or missing ownership still needs repair before input.
-- At 30 seconds before either the observer's planned expiry or the declared
+- At 60 seconds before either the observer's planned expiry or the declared
   responsibility expiry, the default budget becomes zero. An owner declaration
   longer than the actual observer lifetime cannot hide that renewal requirement.
+  Each coverage row exposes `renew_by` (the earlier expiry minus `--renew-before`),
+  or null when actual lifetime is unknown. Increase `--renew-before` when measured
+  startup/check/binding time needs more overlap; 60 seconds is not a timing guarantee.
   Missing/legacy lifetime metadata, incomplete recovery and unknown health also
   require reconciliation; do not invent metadata for an old observer.
 
 For handoff, prepare a replacement watch of the exact current rounds while the old
 observer still runs. Start the new managed observer, confirm successful checks,
-and move each monitor receipt to it. Then stop only the old owned observer handle.
+and move each active job's monitor receipt to it before the old expiry. Skip
+explicitly closed jobs. Then stop only the old owned observer handle.
 Retain old watches/reviews and recover the whole run, so unanswered questions and
 unreviewed events survive. A new watch may produce new events requiring review;
 no old approval is transferred. To restart the same watch, first stop and join its
@@ -63,6 +68,41 @@ does not extend the checkpoint's work budget. Clock inconsistencies fail closed.
 These snapshots cannot ensure future observation or timely human/model attention.
 An ended controller still needs an external wake-up mechanism. Treat zero-budget
 output as a work boundary, not an automatic intervention or an SLA.
+
+## Waiting for native checkpoints
+
+A native wait on a long-running business process may return only when its timeout
+or process exit occurs, even when intermediate output already contains a checkpoint.
+`watch.py wait` waits for Kumi observer events, not arbitrary business output.
+
+If the task exposes an authorized append-only UTF-8 log, start the business process
+once through its managed native handle and retain that handle. Wait on the separate
+read-only helper [wait_output.py](../scripts/wait_output.py):
+
+```bash
+python3 "$ORCH_SCRIPTS/wait_output.py" --path "$STREAM_LOG" --after 0 \
+  --contains CHECKPOINT_READY --contains STREAM_FINISHED --timeout 15
+```
+
+The helper exits on the first matching complete line, so a native wait on **this
+helper** can return while the business process is still running. Inspect the exact
+checkpoint and take its authorized next action; a marker is not approval or task
+success. Save the returned `after` byte offset and `identity`, then pass both on the
+next call. Choose unique literal markers and a timeout within the controller's work
+budget. Reconcile all children between waits; a longer helper timeout does not exempt
+a controller from supervision. Hosts may still delay delivery of process completion.
+
+Exit 0 / `matched` returns the literal and line; exit 1 / `timeout` returns a resumable
+cursor; exit 2 reports an error. Timeout neither cancels nor restarts the business
+process. Partial lines remain unread until newline. An initially absent log can be
+awaited; a pinned source disappearing, changing identity or visibly shrinking fails.
+The reader rejects final symlinks/FIFOs and lines over 64 KiB. It cannot detect every
+in-place edit or truncate-and-regrow between reads, or impose a hard filesystem
+deadline; append-only local logs are a precondition. No output file is created.
+
+When no authorized log/signal exists, use a supported yielding/notification facility
+and bounded native waits. The helper does not add native streaming, wake an ended
+model turn, grant permissions, or stop the original process.
 
 ## File boundaries and request identity
 
@@ -156,6 +196,11 @@ as well as the pin; the helper never sends terminal input or repairs results.
   and caps at max(300 seconds, configured interval). State/dialog changes and read
   gaps restart it. Unknown UI can therefore take up to that cap plus observation
   delay to surface; inspect manually when a shorter bound is needed.
+  A host reporting `blocked` with no recognized prompt emits an immediate
+  `review_due` with `confidence=unconfirmed_blocked`, including after a visible
+  prompt disappears or a blind interval ends. Redraw alone does not create a new
+  `attention`; changed-screen reminders continue. Raw blocked state and conservative
+  input guards remain intact, and a subsequent recognized prompt surfaces immediately.
 
 The observer still examines every target each sweep. Recognized permissions never
 wait for the fallback timer. Continuous redraw at 15-second steps through 600 seconds

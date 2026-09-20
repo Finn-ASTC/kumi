@@ -65,6 +65,19 @@ class CheckpointTests(unittest.TestCase):
         self.assertIn('observer_expiring', out['coverage'][0]['issues'])
         self.assertEqual(out['work_budget_seconds'], 0)
 
+    def test_default_handoff_margin_covers_more_than_one_short_tool_wait(self):
+        self.runtime(seconds=55)
+        out = self.check()
+        self.assertFalse(out['can_work'])
+        self.assertIn('observer_expiring', out['coverage'][0]['issues'])
+        self.assertEqual(out['coverage'][0]['renew_by'], self.now - 5)
+
+    def test_budget_ends_at_explicit_renewal_boundary(self):
+        self.runtime(seconds=70)
+        out = self.check(renew_before=60)
+        self.assertEqual(out['work_budget_seconds'], 10)
+        self.assertEqual(out['coverage'][0]['renew_by'], self.now + 10)
+
     def test_live_lock_cannot_hide_stale_or_failed_target_reads(self):
         for extra in ({'last_successful_check_at':self.now-75}, {'error':'transport failed'}):
             with self.subTest(extra=extra):

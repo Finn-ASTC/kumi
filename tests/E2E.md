@@ -122,7 +122,7 @@ python3 tests/e2e_runner.py watch-init --runner "$RUNNER"
 
 替换时间为真实到期 Unix 秒值。此回执不会启动进程，也不证明监督者一直存活；应通过 run 恢复中的健康字段核对最近成功观察。续轮会清除旧 monitor，需要重新登记。控制器投递后继续自己的独立工作，消费权限/提问事件，只有实际依赖时才有界等待。
 
-每段独立工作之前执行 `checkpoint --runner "$RUNNER"`。它复用正式 `scripts/supervision.py`，返回是否可工作、最长工作片段和下次检查时刻；有待处理事件、过期检查、失活观察器或默认 30 秒内需要续接时，返回零预算/退出码 1。已询问的 waiting_user 保留，不阻止兄弟任务推进。该命令没有终端输入能力，也不会自动唤醒控制器或续约。完整接续顺序见[监督检查点](../skills/agent-orchestrator/references/supervision.md#checkpoint-before-work-and-input)。
+每段独立工作之前执行 `checkpoint --runner "$RUNNER"`。它复用正式 `scripts/supervision.py`，返回是否可工作、最长工作片段和下次检查时刻；有待处理事件、过期检查、失活观察器或默认 60 秒内需要续接时，返回零预算/退出码 1。coverage 的 `renew_by` 给出续接边界，实际启动/检查/绑定耗时较长时应增大正式 helper 的 `--renew-before`。已询问的 waiting_user 保留，不阻止兄弟任务推进。该命令没有终端输入能力，也不会自动唤醒控制器或续约。完整接续顺序见[监督检查点](../skills/agent-orchestrator/references/supervision.md#checkpoint-before-work-and-input)。
 
 ## 恢复、返工与完成
 

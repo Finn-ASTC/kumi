@@ -92,6 +92,8 @@ bash install.sh --target hermes
 
 正式运行工具位于 `agent-orchestrator/scripts/`：`protocol.py` 负责契约和结果，`jobs.py`/`runs.py` 负责提交与恢复，`watch.py`/`supervision.py` 负责巡视与工作预算，`delivery.py`/`completion.py` 负责独立交付验证，`usage.py` 及其配套模块负责用量与来源审计。这些模块要一起复制；**不需要启动 E2E runner 才能使用它们**。
 
+`wait_output.py` 也是运行包的一部分：任务提供可读、只追加日志时，用它等待检查点，避免原生工具一直等到业务进程结束。它不负责启动业务、审批或自动唤醒，使用边界见[检查点等待](skills/agent-orchestrator/references/supervision.md#waiting-for-native-checkpoints)。
+
 ## 离线检查安装
 
 从仓库根目录执行；复制安装时，把 `ORCH_SCRIPTS` 改为所安装 `agent-orchestrator/scripts` 的绝对路径。

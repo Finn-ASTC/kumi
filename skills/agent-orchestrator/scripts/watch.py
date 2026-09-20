@@ -292,6 +292,7 @@ def signals(snapshot: dict[str, Any], old: dict[str, Any], now: float,
     if not ui_observed:
         # A blind interval cannot prove the same dialog stayed on screen.
         old["attention_key"] = None
+        old.pop("state_only_blocked", None)
         old.pop("fallback_issue", None)
     if not error:
         old["last_successful_check_at"] = now
@@ -304,7 +305,12 @@ def signals(snapshot: dict[str, Any], old: dict[str, Any], now: float,
         if state_changed:
             events.append(("state_changed", state))
             old["state"] = state
-        attention_key = dialog_key(screen, state)
+        # Keep dialog_key's state-only fallback for conservative input guards,
+        # but a host's stale blocked flag is not evidence of a visible dialog.
+        attention_key = dialog_key(screen, "working")
+        state_only_blocked = state == "blocked" and attention_key is None
+        blocked_review = state_only_blocked and not old.get("state_only_blocked")
+        old["state_only_blocked"] = state_only_blocked
         dialog_changed = attention_key != old.get("attention_key")
         if attention_key and dialog_changed:
             old["attention_issue"] = uuid.uuid4().hex
@@ -313,6 +319,8 @@ def signals(snapshot: dict[str, Any], old: dict[str, Any], now: float,
         if state_changed or dialog_changed or "fallback_issue" not in old:
             old.update(fallback_issue=uuid.uuid4().hex, fallback_delay=config["review_interval"],
                        surfaced_at=now, surfaced_key=screen_key)
+        if blocked_review:
+            events.append(("review_due", "Host reports blocked without a recognized dialog; inspect live UI."))
         if "surfaced_at" not in old:
             old.update(surfaced_at=now, surfaced_key=screen_key)
         delay = old.get("fallback_delay", config["review_interval"])
@@ -367,7 +375,8 @@ def sweep(path: Path, now: float | None = None) -> dict[str, Any]:
                     event.update(issue_id=old["attention_issue" if kind == "attention" else "fallback_issue"],
                                  correlation_key=digest([target["job_id"], target["round_id"],
                                                          target["resources"], kind, key]),
-                                 confidence="suspected_dialog" if kind == "attention" else "unknown_ui")
+                                 confidence=("suspected_dialog" if kind == "attention" else
+                                             "unconfirmed_blocked" if old.get("state_only_blocked") else "unknown_ui"))
                 protocol.publish(directory / "events" / f"{seq:012d}.json", event)
                 emitted.append(event)
             # Per-target progress is durable even while another read is in flight.
