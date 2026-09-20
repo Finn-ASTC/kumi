@@ -8,6 +8,7 @@
 | 能力边界、既有事项编号和后续优先级 | [状态与路线](STATUS.md) |
 | 回归测试和探针 | [测试索引](../tests/README.md) |
 | 恢复摘要的验证与输出规模 | [C1 验证记录](C1-RECOVERY.md) |
+| 增量读取、续读与失效验证 | [C2 验证记录](C2-RECOVERY.md) |
 | 可恢复的小项目验收 | [E2E runner](../tests/E2E.md) |
 | 发布与后续维护 | [发布说明](../PUBLISHING.md) |
 

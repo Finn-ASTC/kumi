@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Persistent run storage and read-only recovery across immutable watch inventories."""
+"""Persistent run storage, recovery, and opt-in incremental inspection."""
 
 import argparse
 from collections import Counter
@@ -382,6 +382,13 @@ def recover_summary(run_path: str | Path, limit: int = 20, action_offset: int = 
     current = time.time() if now is None else now
     reviews.timestamp(current)
     full = recover(run_path, limit, action_offset, waiting_offset, job_id, current)
+    return summarize_recovery(full, limit, current, job_offset, watch_offset, error_offset)
+
+
+def summarize_recovery(full: dict[str, Any], limit: int, current: float,
+                       job_offset: int = 0, watch_offset: int = 0,
+                       error_offset: int = 0) -> dict[str, Any]:
+    """Project already recovered records, shared by summary and delta views."""
     summary = {k: v for k, v in full.items() if k not in ("run", "jobs", "rounds", "watches", "errors")}
     summary.update(mode="summary", checked_at=current,
                    success_max_age_seconds=SUMMARY_SUCCESS_MAX_AGE,
@@ -420,6 +427,12 @@ def recover_summary(run_path: str | Path, limit: int = 20, action_offset: int = 
     return summary
 
 
+def recover_delta(run_path: str | Path, **kwargs: Any) -> dict[str, Any]:
+    """Recover with an explicit durable delivery cursor and bounded read cache."""
+    import recovery_delta
+    return recovery_delta.recover(run_path, **kwargs)
+
+
 def main() -> int:
     """Manage run handles and read compact recovery queues without terminal I/O."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -442,7 +455,11 @@ def main() -> int:
     recovering.add_argument("--limit", type=int, default=20)
     recovering.add_argument("--action-offset", type=int, default=0)
     recovering.add_argument("--waiting-offset", type=int, default=0)
-    recovering.add_argument("--summary", action="store_true", help="page all displayed collections; still scans full recovery")
+    views = recovering.add_mutually_exclusive_group()
+    views.add_argument("--summary", action="store_true", help="page all displayed collections; still scans full recovery")
+    views.add_argument("--delta", action="store_true", help="cache source contents and retain a delivery cursor; writes recovery state")
+    recovering.add_argument("--cursor", help="delta cursor_path returned by this run")
+    recovering.add_argument("--since", help="last successfully received delta next_cursor token")
     recovering.add_argument("--job-offset", type=int, default=0, help="summary jobs page offset")
     recovering.add_argument("--watch-offset", type=int, default=0, help="summary watches page offset")
     recovering.add_argument("--error-offset", type=int, default=0, help="summary errors page offset")
@@ -459,7 +476,13 @@ def main() -> int:
             value = {"run_path": str(Path(args.run).resolve()), "request_path": str(Path(args.request).resolve()),
                      "submission_inferred": False, "executes_commands": False}
         else:
-            if args.summary:
+            protocol.require(args.delta or not (args.cursor or args.since), "--cursor/--since require --delta")
+            if args.delta:
+                protocol.require(not (args.job_offset or args.watch_offset), "delta changes use the cursor, not job/watch offsets")
+                value = recover_delta(args.run, limit=args.limit, action_offset=args.action_offset,
+                                      waiting_offset=args.waiting_offset, error_offset=args.error_offset,
+                                      job_id=args.job, cursor_path=args.cursor, since=args.since)
+            elif args.summary:
                 value = recover_summary(args.run, args.limit, args.action_offset, args.waiting_offset, args.job,
                                         job_offset=args.job_offset, watch_offset=args.watch_offset,
                                         error_offset=args.error_offset)

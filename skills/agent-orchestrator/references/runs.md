@@ -93,7 +93,7 @@ python3 "$RUNS_TOOL" list
 python3 "$RUNS_TOOL" recover --run "$RUN_FILE" --limit 20
 ```
 
-For custom parents use `list --root "$PARENT"`. These reads create no directories and
+For custom parents use `list --root "$PARENT"`. Full/summary recovery and list create no directories and
 perform no terminal reads. Recovery includes jobs, tracked rounds, all retained watches,
 open actions, `waiting_user`, and health/errors. Closed jobs can still have unresolved
 historical reviews.
@@ -139,6 +139,9 @@ python3 "$RUNS_TOOL" recover --run "$RUN_FILE" --summary --limit 10
 `--summary` is opt-in. Without it, recovery keeps its full jobs/rounds/watches output
 and only pages the two pending queues. Summary still reads the entire recovery;
 it reduces displayed rows, not disk scanning, and is not a delta query.
+For repeated inspections, [incremental recovery](recovery-delta.md) provides
+`recover --delta`, with a source-content cache and durable job/watch change cursor.
+That separate opt-in mode writes private cursor state; its pending queues always repeat.
 
 Summary retains `run_id`, `run_path`, `index_path`, `complete`, and the exact pending
 review payloads (including notes, revisions, related reviews and evidence handles).

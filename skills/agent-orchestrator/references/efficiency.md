@@ -93,6 +93,9 @@ notes. Use each returned watch_path + seq for review commands below. See
 [run recovery](runs.md) for independent pages, full-detail drill-down, partial
 read failures, and observer activity versus successful-check timestamps. Summary
 bounds displayed rows; it still scans full recovery and does not grant a work budget.
+For repeated large-run reads, [delta recovery](recovery-delta.md) can reuse unchanged
+source contents and deliver compact row changes; it writes a private cursor and
+retains pending queues on every response. Account for the cursor's own I/O.
 
 Use this queue on resume and between work blocks. Event delivery and actual handling have separate state: advancing `events`/`wait` cursors never clears an unresolved review.
 

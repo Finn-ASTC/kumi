@@ -2,6 +2,8 @@
 """Local protocol helpers. No agent launches, shell evaluation, or resource deletion."""
 
 import argparse
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone
 import json
 import os
@@ -11,6 +13,7 @@ import shutil
 import stat
 import sys
 import tempfile
+from typing import Any, Iterator
 import uuid
 
 
@@ -22,6 +25,17 @@ IDENTITY_FIELDS = ("schema_version", "job_id", "round_id")
 # herdr v0.9.1 src/workspace.rs uses this alphabet for all public numbers.
 # IDs are opaque: validate their shape, never decode or renumber them.
 HERDR_PUBLIC_NUMBER = r"[123456789ABCDEFGHJKMNPQRSTVWXYZ0]+"
+_READ_CACHE: ContextVar[Any] = ContextVar("protocol_read_cache", default=None)
+
+
+@contextmanager
+def cached_reads(cache: Any) -> Iterator[None]:
+    """Opt in within one recovery; other contexts keep ordinary descriptor reads."""
+    token = _READ_CACHE.set(cache)
+    try:
+        yield
+    finally:
+        _READ_CACHE.reset(token)
 
 
 class ProtocolError(ValueError):
@@ -78,6 +92,9 @@ def read_bytes(path: str | Path, max_bytes: int | None = None) -> bytes:
         info = os.fstat(stream.fileno())
         require(stat.S_ISREG(info.st_mode), f"expected regular file: {path}")
         require(info.st_size <= limit, f"file exceeds {limit}-byte size limit: {path}")
+        cache = _READ_CACHE.get()
+        if cache is not None:
+            return cache.read(path, stream, info, limit)
         raw = stream.read(limit + 1)
         require(len(raw) <= limit, f"file exceeds {limit}-byte size limit: {path}")
         return raw

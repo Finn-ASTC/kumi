@@ -6,6 +6,7 @@
 |---|---|---|
 | `test_*.py` | 自动回归 | unittest discover；大部分离线，真实 tmux 测试显式启用 |
 | `test_recovery_summary.py` | C1 恢复摘要回归 | 多规模分页、页外错误与健康、旧问题/新权限身份、只读与时间过期；[验证记录](../docs/C1-RECOVERY.md) |
+| `test_recovery_delta.py`、`recovery_benchmark.py` | C2 增量恢复回归与规模测量 | 续读/缓存失效、丢失输出、分页积压与断点；benchmark 在独立父目录保留无模型夹具，支持 `--skills-root`；[验证记录](../docs/C2-RECOVERY.md) |
 | `test_usage_sources.py` | 来源绑定审计回归 | run 历史/漏绑、原生父子关系、四宿主证据边界、轮次/账本 scope 与有效计数核对；无模型调用 |
 | `test_hermes_hooks.py`、`hermes_hook_probe.py` | 可选 Hermes 用量插件验证 | 回归检查重试身份/缺记录/隐私/绑定；probe 通过已安装 Hermes 的真实加载与 hook 路径注入合成响应，不调用模型 |
 | `test_hermes_aux.py`、`hermes_aux_probe.py` | 辅助回执验证 | 去重、缺失计数、未知归属与旧主循环存储；probe 默认合成响应，显式 `--template-home` 才复制既有配置进行标题/审批真实调用；需兼容的原生 hook |

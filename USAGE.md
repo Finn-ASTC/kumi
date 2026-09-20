@@ -85,7 +85,9 @@ herdr 中默认每个子任务新建一个 **workspace（space）**，初始 tab
 
 把适合独立推进的工作拆出去，每个子任务说明目标、范围、验收、必要输入和已知事实。优先给文件路径与简短结论，不复制整段对话；小任务的调度成本可能高于收益。
 
-正式工具提供 `prepare --task-packet … --brief`、事件去重、按游标读取和按需恢复。`--brief` 减少返回给调度方的重复任务正文，子 agent 仍收到完整契约。日常查看可用 `runs.py recover --run "$RUN_FILE" --summary --limit 10`：任务、watch、错误和两类待办独立分页，保留全局计数及异常提示；轮次和完成条件详情按需读取。默认完整恢复仍只分页待办。摘要限制行数，不是严格的字节/token 上限，也仍扫描完整状态；delta 查询尚待实现。分页和检查方法见[恢复说明](skills/agent-orchestrator/references/runs.md)。
+正式工具提供 `prepare --task-packet … --brief`、事件去重、按游标读取和按需恢复。`--brief` 减少返回给调度方的重复任务正文，子 agent 仍收到完整契约。日常查看可用 `runs.py recover --run "$RUN_FILE" --summary --limit 10`：任务、watch、错误和两类待办独立分页，保留全局计数及异常提示；轮次和完成条件详情按需读取。默认完整恢复仍只分页待办。摘要限制行数，不是严格的字节/token 上限，也仍扫描完整状态。分页和检查方法见[恢复说明](skills/agent-orchestrator/references/runs.md)。
+
+重复巡视较大 run 时，可选 `recover --delta`：复用元数据未变的源文件内容，任务/watch 按变化返回，权限待办、等待用户、错误及总数每次仍返回。首次回复提供 `cursor_path` 与 `next_cursor`，收到并处理后以 `--cursor … --since …` 续读；标识不匹配、缓存损坏或筛选变化会重新建立基线。此模式在 run 内写入私有游标，仍扫描目录、验证元数据和重新计算过期，并有游标自身的读写开销。详见[增量恢复](skills/agent-orchestrator/references/recovery-delta.md)；继续独立工作仍须通过监督检查。
 
 用量需读取原生证据，缺失数据保持 `null`。Codex/omp JSONL、OpenCode SQLite/export 和 Hermes 可选主循环回执各有来源及归属条件；不能用日志长度估算 token，也不能把 Hermes 的累计变化直接当成某轮成本。
 
