@@ -6,6 +6,9 @@ grants approval or cleans resources.
 
 For usage completeness, [discover and audit source bindings](usage-sources.md) against
 this run. Recovery alone does not bind controller/native sources or meter their calls.
+At startup, retain a [metering plan](metering.md), even if initially empty; update its
+explicit mappings and collect checkpoints at phase boundaries and handoff. Keep the
+latest selected `plan_path` with the run handle. Registration is not collection.
 
 Each indexed job now includes a `completion` summary: response publication, independent
 acceptance, host settling, freshness and missing conditions. See [completion](completion.md)

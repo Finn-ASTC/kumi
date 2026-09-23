@@ -177,6 +177,7 @@ def summarize(request_path: str) -> dict[str, Any]:
     return {"job_id": chain[-1][1]["job_id"], "through_round": chain[-1][1]["round_id"],
             "rounds": len(chain), "samples": len(samples), "rounds_without_usage": missing,
             "known_subtotals": known,
+            "non_cached_input": non_cached_input(samples, not missing),
             "totals": {field: known[field] if complete[field] else None for field in COUNTERS},
             "counter_coverage_complete": complete,
             "attempts": {purpose: sum(value == purpose for value in attempts.values())
@@ -185,6 +186,16 @@ def summarize(request_path: str) -> dict[str, Any]:
             "groups": group_samples(samples),
             "note": "Only effective recorded calls/attempts are counted; corrections preserve originals. Cached input is included in input; "
                     "do not add it again. Unknown counts are null. No pricing or tokenizer estimates."}
+
+
+def non_cached_input(samples: list[dict[str, Any]], scope_complete: bool = True) -> dict[str, Any]:
+    """Subtract cached input per call only when both counters are known."""
+    observed = [s["input_tokens"] - s["cached_input_tokens"] for s in samples
+                if s["input_tokens"] is not None and s["cached_input_tokens"] is not None]
+    complete = bool(samples) and len(observed) == len(samples) and scope_complete
+    return dict(known_subtotal=sum(observed), observed_samples=len(observed),
+                unknown_samples=len(samples) - len(observed),
+                total=sum(observed) if complete else None)
 
 
 def group_samples(samples: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -196,6 +207,7 @@ def group_samples(samples: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for (purpose, role, phase), entries in groups.items():
         known = {k: sum(e[k] for e in entries if e[k] is not None) for k in COUNTERS}
         result.append(dict(role=role, phase=phase, purpose=purpose, samples=len(entries),
+                           non_cached_input=non_cached_input(entries),
                            known_subtotals=known,
                            totals={k: known[k] if all(e[k] is not None for e in entries) else None for k in COUNTERS}))
     return sorted(result, key=lambda g: json.dumps([g[k] for k in ("purpose", "role", "phase")]))
@@ -271,6 +283,7 @@ def summarize_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     complete = {k: bool(samples) and not missing and source_complete and
                 all(s[k] is not None for s in samples) for k in COUNTERS}
     return dict(jobs=len({job for job, _ in rounds}), rounds=len(rounds), samples=len(samples), duplicates=duplicates,
+                non_cached_input=non_cached_input(samples, not missing and source_complete),
                 rounds_without_usage=[dict(job_id=j, round_id=r) for j, r in sorted(missing)],
                 known_subtotals=known, totals={k: known[k] if complete[k] else None for k in COUNTERS},
                 counter_coverage_complete=complete, source_coverage_complete=source_complete, sources=coverage,
@@ -296,6 +309,12 @@ def main() -> int:
     discover.add_argument("--run", required=True)
     audit = commands.add_parser("audit-sources", help="audit explicit actor/native bindings and usage gaps")
     audit.add_argument("--manifest", required=True)
+    register = commands.add_parser("register-metering", help="retain an immutable run metering plan; no collection")
+    register.add_argument("--manifest", required=True)
+    checkpoint = commands.add_parser("checkpoint", help="collect registered native mappings and retain a coverage report")
+    checkpoint.add_argument("--plan", required=True)
+    checkpoint.add_argument("--label", required=True)
+    checkpoint.add_argument("--dry-run", action="store_true")
     history = commands.add_parser("history", help="show original/effective sample and correction revision")
     history.add_argument("--request", required=True)
     history.add_argument("--source", required=True)
@@ -321,7 +340,11 @@ def main() -> int:
     auxiliary.add_argument("--session-id", required=True)
     args = parser.parse_args()
     try:
-        if args.command == "hermes-aux":
+        if args.command in ("register-metering", "checkpoint"):
+            import metering
+            result = (metering.register(args.manifest) if args.command == "register-metering"
+                      else metering.checkpoint(args.plan, args.label, args.dry_run))
+        elif args.command == "hermes-aux":
             import hermes_aux
             result = hermes_aux.inspect(args.log, args.session_id)
         elif args.command in ("hermes-snapshot", "hermes-windows"):

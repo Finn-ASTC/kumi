@@ -110,7 +110,11 @@ def _binding(value: Any) -> None:
 
 def audit(manifest_path: str) -> dict[str, Any]:
     """Cross-check bindings, descendants and recorded attribution; never import or mutate."""
-    manifest = protocol.read_json(manifest_path)
+    return audit_data(protocol.read_json(manifest_path))
+
+
+def audit_data(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Audit a file manifest or a retained run metering plan using identical rules."""
     protocol.require(set(manifest) == {"version", "run_path", "bindings"} and
                      type(manifest["version"]) is int and manifest["version"] == 1, "invalid source audit manifest")
     native_usage.nonempty(manifest["run_path"], "run_path")
@@ -298,6 +302,8 @@ def audit(manifest_path: str) -> dict[str, Any]:
     if not complete:
         summary["totals"] = dict.fromkeys(usage.COUNTERS)
         summary["counter_coverage_complete"] = dict.fromkeys(usage.COUNTERS, False)
+        if "non_cached_input" in summary:
+            summary["non_cached_input"]["total"] = None
     return dict(run_path=inventory["run_path"], inventory_complete=True, binding_coverage_complete=complete,
                 unbound_subjects=unbound, issues=issues, native_lineage_unknown=lineage_unknown,
                 subjects=inventory["subjects"], inspections=inspections, project_manifest=project, usage=summary,

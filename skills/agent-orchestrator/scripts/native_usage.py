@@ -174,7 +174,11 @@ def inspect_log(host: str, path: str, session_id: str | None = None) -> dict[str
 
 def import_manifest(path: str, dry_run: bool = False) -> dict[str, Any]:
     """Validate the complete source and mapping, then idempotently publish selected calls."""
-    manifest = protocol.read_json(path)
+    return import_data(protocol.read_json(path), dry_run)
+
+
+def import_data(manifest: dict[str, Any], dry_run: bool = False) -> dict[str, Any]:
+    """Import an explicit mapping from a file or an immutable run metering plan."""
     protocol.require(set(manifest) == {"version", "host", "log_path", "session_id", "mappings"},
                      "invalid native manifest fields")
     protocol.require(type(manifest["version"]) is int and manifest["version"] == 1,

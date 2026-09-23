@@ -245,6 +245,10 @@ Use a fresh evidence path. The command returns a path/SHA-256 receipt. The saved
 
 ### Multiple jobs and source coverage
 
+For an ongoing run, use [metering plans and checkpoints](metering.md) to retain
+controller/worker/native-child mappings and repeatedly collect with coverage reports.
+This is explicit collection, not a background service; existing imports remain usable.
+
 For a persistent run, first use [`discover-sources` and `audit-sources`](usage-sources.md)
 to expose controller, prepared-round, historical-session and descendant binding gaps.
 The read-only audit generates the project inventory and checks native counters and ledger

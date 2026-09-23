@@ -5,6 +5,10 @@ they do not launch agents, read terminals, import counters or update job/native 
 Use them when a hand-written project source manifest might have omitted the controller,
 prepared rounds, historical native sessions or native descendants.
 
+For repeated collection, [register a metering plan and run checkpoints](metering.md).
+It retains these bindings together with explicit import mappings, reuses this audit
+and stores reports; the two read-only commands below keep their existing behavior.
+
 ## Discover candidates
 
 ```bash
