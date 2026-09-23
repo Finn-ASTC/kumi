@@ -41,7 +41,7 @@ def snapshot_paths(paths: list[str]) -> dict:
     return result
 
 
-def initialize(root: str | Path, spec: dict, fixture: bool = False) -> dict:
+def initialize(root: str | Path, spec: dict, fixture: bool = False, *, control_experiment: str | None = None) -> dict:
     """Copy seeds into a fresh owned lab, prepare shared jobs and pre-edit baselines."""
     root = Path(root).resolve()
     require(root.is_dir(), 'existing test parent required')
@@ -86,6 +86,8 @@ def initialize(root: str | Path, spec: dict, fixture: bool = False) -> dict:
     data = {'version':1, 'runner_path':str(lab/'runner.json'), 'run_path':run['run_path'],
             'index_path':run['index_path'], 'fixture':fixture, 'created_at':protocol.utc_now(),
             'observe_paths':scopes, 'before':before, 'targets':{}, 'watch_path':None}
+    if control_experiment is not None:
+        data['control_experiment'] = control_experiment
     watch.atomic_save(lab/'runner.json', data)
     try:
         for target in targets:
@@ -233,6 +235,9 @@ class Runner(AbstractContextManager):
     def start(self, name: str, preflight: dict, *, transport: str = 'herdr', session: str | None = None,
               parent_pane: str | None = None, parent_tab: str | None = None, layout: str = 'auto') -> dict:
         target = self.target(name)
+        if self.data.get('control_experiment'):
+            from control_lab import preflight as experiment_preflight
+            experiment_preflight(self, name)
         require(target['phase'] == 'prepared', 'startup may have landed; reconcile instead of starting again')
         require(transport in ('herdr','tmux'), 'invalid transport')
         require(transport != 'herdr' or bool(session), 'explicit existing herdr session required')
@@ -369,6 +374,9 @@ class Runner(AbstractContextManager):
         return {'monitor':state['monitor'],'observer_started':False}
 
     def submit(self, name: str, readiness: dict) -> dict:
+        if self.data.get('control_experiment'):
+            from control_lab import preflight as experiment_preflight
+            experiment_preflight(self, name, submitting=True)
         target = self.target(name)
         require(target['phase'] == 'started', 'start and reconcile target before submission')
         state = jobs.load(Path(self.data['index_path']),target['job_id'])

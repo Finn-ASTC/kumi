@@ -4,6 +4,66 @@
 
 从仓库根目录执行 `python3 tests/e2e_runner.py --help`。runner 将现有 protocol/jobs/runs/watch/delivery/completion 串成可恢复的显式步骤，不是常驻调度器。每条命令输出一份 JSON；退出码 0 表示步骤成功，`verify` 的 1 表示验收拒收，2 表示操作失败。传输返回成功仍不证明任务已被接收。
 
+## 无模型的控制基础演练
+
+最小控制实验基础属于开发侧，不进入运行 skills。它复用 E2E runner，但额外固定 seed 与
+实验资源、在启动前登记计量计划，并要求提交前绑定精确 native 身份。可在独立目录运行
+合成双格式/恢复演练：
+
+```bash
+ORCH_TEST_ROOT="$(mktemp -d /tmp/orch-controls.XXXXXX)"
+python3 tests/control_lab_demo.py --root "$ORCH_TEST_ROOT"
+```
+
+结果包含 `fixture: true`、零模型调用和 `native_capabilities: not_tested`。真实宿主控制
+实验先核对版本/审批设置，再用 `control_lab.py init --root ... --registry ... --input ...`；
+native start 仍沿用 runner 的显式流程。先 `pin` 当前 job/round/resources/native session
+的精确身份，才能提交；deny、stop、idle notice、safe-opportunity notice 分别用 `observe`
+提交带 UI 模式和证据的记录。`report` 显示失败/unsupported/uncertain 和未测能力，不合成为
+宿主通过。初始计量计划刻意为空，报告应显示未绑定来源；真实导入前须显式建立 source plan。
+资源声明使用绝对 workspace/build/database 路径或端口地址、协议和持有人。预留通过同一个
+registry 合作式协调，不强制别的进程遵守；异常退出不自动释放，手动释放要核对写入者、
+端口和数据库状态并带证据。此工具只记观察，不发通知/中断/取消。
+
+recipe 的 JSON 形状如下；`scenario` 使用下节完整 E2E 场景，不另造 task/result 协议。
+将说明占位值换成实际对象和路径；资源声明只预留，不启动服务、不检查外部进程是否占端口。
+所有协作实验使用同一个已有 registry 目录。
+
+```json
+{
+  "version": 1,
+  "input_version": "cancel-and-notice-v1",
+  "scenario": "替换成下节完整 scenario 对象，目标 kind 先限 codex/omp",
+  "resources": [
+    {"kind":"path", "owner":"author", "path":"/absolute/build-area", "purpose":"build"},
+    {"kind":"path", "owner":"author", "path":"/absolute/test.db", "purpose":"database"},
+    {"kind":"port", "owner":"author", "address":"127.0.0.1", "port":8123, "protocol":"tcp"}
+  ]
+}
+```
+
+运行 `init` 不启动宿主；返回 `experiment_path`、`runner_path`、初始未知计量检查点。
+runner 仍负责 `start/watch-init/monitor/inspect/submit`。核对实际 native session 后用 runner
+的 `native` 绑定，再从正式 `controls.py inspect` 结果取 `identity`，作为 control lab `pin`
+输入：`{"identity":完整身份对象,"evidence_path":"/absolute/proof.json","note":"查证方法"}`。
+如果宿主在首次请求前无法提供 session ID，这个实验入口会阻止业务提交；保留该限制，
+需另行设计可计量的有界身份引导，不猜“最新”记录。当前实验只固定一轮/一个实例，换轮需新实验。
+
+`observe` 输入包含 `capability`（`deny/stop/notice_idle/notice_interrupt`）、`scenario`、
+`ui_mode`、`status`（`observed/failed/unsupported/uncertain`）、当前完整 `identity`、
+`evidence_path`、`note` 和 `checks`。`observed` 仅是控制器证据声明，不是适配器认证或
+输入许可；失败/未知记录仍保留。停止检查沿用全部 `STOP_CHECKS`；通知检查另记
+`exact_recipient/input_owner/no_dialog/draft_preserved/notice_submitted/recipient_choice_preserved`
+均为 true，以及 `background` 为 `running` 或 `clear`。这里的 input owner 是观察声明，
+尚不是新通知执行器的租约；回执丢失写 `uncertain`，不能借该工具自动重发。
+
+`collect --experiment ... --label ... --input plan.json` 使用正式计量 plan schema；后续
+省略 `--input` 可续采最新已登记计划，旧检查点不覆盖。plan 来自实际来源显式绑定，参考
+[计量说明](../skills/agent-orchestrator/references/metering.md)。`report` 可换进程读取；若
+初始化失败，原目录和占用仍保留，未完成 runner 不得启动。`release` 需要 `evidence_path`、
+`note` 和 `checks` 中 `writers_stopped/ports_free/databases_closed` 全部为 true；已分配
+目标须先通过既有 job 完成或取消门槛。释放中途失败用同一证据续做，不自动回收目录/端口。
+
 ## 无模型的小项目演练
 
 ```bash
