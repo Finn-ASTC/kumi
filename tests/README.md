@@ -5,6 +5,7 @@
 | 文件 | 分类 | 如何使用 |
 |---|---|---|
 | `test_*.py` | 自动回归 | unittest discover；大部分离线，真实 tmux 测试显式启用 |
+| `approval_shadow.py`、`approval_backends.py`、`jev_backend.py`、`test_approval_shadow.py` | AP-01/02 通用后端影子试验 | 默认规则、可选 Jev/独立程序 JSON 适配器；合成数据、预算/中断恢复与用量未知记录；不操作原生审批，[试用与接入](../docs/APPROVAL-SHADOW.md) |
 | `host_compat_probe.py`、`test_host_compat_probe.py` | 滚动更新兼容盘点 | 显式检查已安装 CLI 的版本/帮助；不会查询升级、提交任务或认证，帮助通过不证明原生行为；[版本审计](../docs/HOST-COMPATIBILITY-20260923.md) |
 | `hermes_approval_probe.py` | Hermes 原生审批接口探针 | 独立导入指定 checkout 的审批 transport，用合成请求检查拒绝、超时、旧回执与范围；不调用模型或实际操作，不等于 TUI/审批服务验收 |
 | `test_runs.py` | 持久恢复回归 | 包含 B1 发现的原生空元数据目录误报；保留非空/符号链接/未登记任务报警，[原生监督报告](../docs/B1-SUPERVISION.md)另列真实模型实验的失败与边界 |

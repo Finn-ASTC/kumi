@@ -11,6 +11,7 @@
 | 审批发现、复核记账与解决证据的时效复盘 | [B3 监督时效审计](B3-SUPERVISION-AUDIT.md) |
 | 实际宿主版本、接口验证及升级跟进项 | [宿主兼容审计](HOST-COMPATIBILITY-20260923.md) |
 | Jev/Laya/Von/Foq 等决策后端的候选与评测门槛 | [审批后端选型](APPROVAL-MODEL-SELECTION.md) |
+| 无 Key 演练、Jev 试用、可替换后端 JSON 接口 | [通用审批影子工具](APPROVAL-SHADOW.md) |
 | 计量计划、阶段采集、缺口与重复导入验证 | [CQ-01 最小计量闭环](CQ1-METERING.md) |
 | 按轮查询与补记验收、切轮门槛和历史兼容 | [DH-01 按轮验收](DH1-ROUND-ACCEPTANCE.md) |
 | 审批证据、动作回执、停止确认与无结果取消 | [DH-02/03 首批](DH23-CONTROLS.md) |
