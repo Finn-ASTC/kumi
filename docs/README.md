@@ -11,6 +11,7 @@
 | 增量读取、续读与失效验证 | [C2 验证记录](C2-RECOVERY.md) |
 | DataHive 实测反馈、缺口归类与默认 tab/标题需求 | [DataHive 跟进清单](DATAHIVE-FOLLOWUP.md) |
 | 同伴直接交流、委托验收与网状协作演进（提案） | [网状协作设计](MESH-COLLABORATION.md) |
+| DataHive 原生用量、质量证据与调度接班优化 | [成本与质量复核](DATAHIVE-COST-QUALITY.md) |
 | 可恢复的小项目验收 | [E2E runner](../tests/E2E.md) |
 | 发布与后续维护 | [发布说明](../PUBLISHING.md) |
 
