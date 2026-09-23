@@ -35,7 +35,12 @@ codex exec --sandbox workspace-write --add-dir "$ROUND_ROOT" \
 
 ## 当前版本差异
 
-本地 0.154.0：`--ask-for-approval` 为 `on-request|never`；新脚本用明确的 `--sandbox workspace-write`，不依赖旧 `--full-auto`。权限菜单推荐 `/permissions`；旧版本菜单/命令可能不同。`codex queue` 存在不表示可以绕过一个目标只执行一轮的要求。
+本地 0.155.1（2026-09-23 CLI 帮助复核）：`--ask-for-approval` 仍为 `on-request|never`；新脚本用明确的 `--sandbox workspace-write`，不依赖旧 `--full-auto`。`exec`/交互恢复所用 `--add-dir`、`--cd` 等选项仍存在；帮助核对不重置上文真实恢复实验的版本。权限菜单推荐 `/permissions`；旧版本菜单/命令可能不同。`codex queue` 存在不表示可以绕过一个目标只执行一轮的要求。
+
+2026-09-23 的[官方更新记录](https://learn.chatgpt.com/docs/changelog)已列出 0.156.1；
+0.156.0 引入可选 `/tui` 全屏、`/usage` 和 daemon 入口变化。它们未在本基线安装或验证。
+升级后分别核对 UI 模式、审批画面、粘贴提交、中断和后台收尾；CLI 版本不能证明共享
+daemon 或既有会话已换版，原生用量展示也不替代按轮归属。
 
 官方来源（2026-09-17 实际读取）：
 

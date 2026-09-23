@@ -5,6 +5,8 @@
 | 文件 | 分类 | 如何使用 |
 |---|---|---|
 | `test_*.py` | 自动回归 | unittest discover；大部分离线，真实 tmux 测试显式启用 |
+| `host_compat_probe.py`、`test_host_compat_probe.py` | 滚动更新兼容盘点 | 显式检查已安装 CLI 的版本/帮助；不会查询升级、提交任务或认证，帮助通过不证明原生行为；[版本审计](../docs/HOST-COMPATIBILITY-20260923.md) |
+| `hermes_approval_probe.py` | Hermes 原生审批接口探针 | 独立导入指定 checkout 的审批 transport，用合成请求检查拒绝、超时、旧回执与范围；不调用模型或实际操作，不等于 TUI/审批服务验收 |
 | `test_runs.py` | 持久恢复回归 | 包含 B1 发现的原生空元数据目录误报；保留非空/符号链接/未登记任务报警，[原生监督报告](../docs/B1-SUPERVISION.md)另列真实模型实验的失败与边界 |
 | `test_recovery_summary.py` | C1 恢复摘要回归 | 多规模分页、页外错误与健康、旧问题/新权限身份、只读与时间过期；[验证记录](../docs/C1-RECOVERY.md) |
 | `test_recovery_delta.py`、`recovery_benchmark.py` | C2 增量恢复回归与规模测量 | 续读/缓存失效、丢失输出、分页积压与断点；benchmark 在独立父目录保留无模型夹具，支持 `--skills-root`；[验证记录](../docs/C2-RECOVERY.md) |
@@ -38,6 +40,9 @@
 # 分发包引用检查：范围和限制见接入说明的“离线检查安装”
 python3 tests/check_skill_package.py
 
+# 本机 CLI 版本与必要参数；可用 --host codex 选择单个宿主
+python3 tests/host_compat_probe.py
+
 # 标准回归，无模型；默认跳过 opt-in tmux 测试
 python3 -m unittest discover -s tests -v
 
@@ -51,6 +56,22 @@ python3 tests/e2e_demo.py --root "$ORCH_TEST_ROOT"
 # 交付配置负对照；离线构建，保留原始失败和修正后的独立验收证据
 python3 tests/delivery_config_demo.py --root "$ORCH_TEST_ROOT"
 ```
+
+兼容探针可用 `--executable HOST=/absolute/cli` 指定实际启动程序；默认检查 PATH。
+`--omo-package-json /absolute/node_modules/oh-my-openagent/package.json` 只读取指定插件
+元数据，不调用包管理器、不用 `bunx ...@latest`。缺宿主、未知版本、命令失败或缺参数
+返回非零；`advertised`、`version_only`、`metadata_only` 均不代表原生兼容全部通过。
+输出含可执行路径与帮助指纹，不回显原始帮助/异常/config；公开前仍需审查路径。
+宿主自身的帮助启动可能有缓存副作用。版本基线固定为本次审计前的观测，不是最低版本。
+
+Hermes 审批探针用该宿主的实际解释器运行：
+
+```bash
+"$HERMES_PYTHON" tests/hermes_approval_probe.py --hermes-root "$HERMES_ROOT" --root "$TEST_ROOT"
+```
+
+它不发现插件、不载入用户 profile，保留合成结果与原生模块 SHA-256；注册/发现、
+审批呈现、取消整个任务和后台停止还需独立验收。该脚本和其他探针都不进入运行包。
 
 `e2e_runner.py` 的确定性模式需在 init 时显式选择 `--fixture`；普通 native 模式会在 start 时启动实际宿主。需要做真实 agent 验收时，应核对场景、宿主配置和作用域后按说明分步执行。
 

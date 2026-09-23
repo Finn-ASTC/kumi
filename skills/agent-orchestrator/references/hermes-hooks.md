@@ -126,6 +126,10 @@ does not add a native hook. Check the actual host capability, not the version la
 python -c 'from hermes_cli.plugins import VALID_HOOKS; print("on_aux_usage" in VALID_HOOKS)'
 ```
 
+Upstream `pre_auxiliary_call` / `post_auxiliary_call` are a separate, currently
+unimplemented adapter path; the [status diagnostic](hermes-support.md) distinguishes
+them. They cannot be substituted for this collector's `on_aux_usage` name or payload.
+
 The required observer contract emits a stable `observation_id` for one accounting
 observation, exact `session_id`, `turn_id:null`, `task`, response `model`, optional
 `provider_hint`, and canonical `usage` or null. Input excludes cache read/write;

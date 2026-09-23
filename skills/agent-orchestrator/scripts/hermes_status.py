@@ -16,11 +16,13 @@ from typing import Any
 
 MAIN_HOOKS = frozenset({"pre_llm_call", "pre_api_request", "post_api_request",
                         "api_request_error", "on_session_end"})
+AUXILIARY_OBSERVERS = ("pre_auxiliary_call", "post_auxiliary_call")
 
 
 def host_capabilities(root: Path) -> dict[str, Any]:
     """Read the host's advertised names, without treating them as a semantic test."""
     unknown = dict(status="unknown", main_loop_hooks=None, auxiliary_hook=None,
+                   auxiliary_observer_hooks={name: None for name in AUXILIARY_OBSERVERS},
                    missing_main_hooks=None, reason="host_import_failed")
     expected = root / "hermes_cli/plugins.py"
     if not expected.is_file():
@@ -35,6 +37,7 @@ def host_capabilities(root: Path) -> dict[str, Any]:
             return {**unknown, "reason": "host_registry_unrecognized"}
         missing = sorted(MAIN_HOOKS - set(hooks))
         return dict(status="inspected", main_loop_hooks=not missing, auxiliary_hook="on_aux_usage" in hooks,
+                    auxiliary_observer_hooks={name: name in hooks for name in AUXILIARY_OBSERVERS},
                     missing_main_hooks=missing, reason=None)
     except (Exception, SystemExit):
         # Native import errors can carry config/endpoint text. Report only a stable
@@ -132,12 +135,16 @@ def inspect(root: Path, home: Path) -> dict[str, Any]:
     enabled, config_reason = configured_plugin(home)
     files = plugin_files(home)
     safe_mode = os.environ.get("HERMES_SAFE_MODE", "").strip().lower() in {"1", "true", "yes", "on"}
+    auxiliary = layer(host["auxiliary_hook"], files, enabled, safe_mode)
+    if host["auxiliary_hook"] is False and any(
+            value is True for value in host["auxiliary_observer_hooks"].values()):
+        auxiliary["reasons"].append("auxiliary_observer_adapter_not_implemented")
     return dict(version=1, hermes_root=str(root), profile_home=str(home), python=sys.executable,
         host=host, plugin=dict(files=files, configured_enabled=enabled, configuration_reason=config_reason,
                                discovery="not_run", safe_mode=safe_mode),
         layers=dict(orchestration=dict(metering_required=False, health="not_checked"),
                     main_loop=layer(host["main_loop_hooks"], files, enabled, safe_mode),
-                    auxiliary=layer(host["auxiliary_hook"], files, enabled, safe_mode)),
+                    auxiliary=auxiliary),
         stores=dict(main_loop=store_presence(home, "events.sqlite3"),
                     auxiliary=store_presence(home, "auxiliary.sqlite3")),
         capture_verified=False, coverage_complete=False, totals=None,

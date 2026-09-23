@@ -55,6 +55,31 @@ class HermesStatusTests(ToolCase):
         self.assertEqual(report["stores"]["auxiliary"], "missing")
         self.assertFalse(report["capture_verified"])
 
+    def test_new_observers_do_not_masquerade_as_supported_aux_usage(self):
+        self.set_hooks(self.main_hooks + ["pre_auxiliary_call", "post_auxiliary_call"])
+        report = self.run_status()
+        self.assertEqual(report["host"]["auxiliary_observer_hooks"],
+                         {"pre_auxiliary_call": True, "post_auxiliary_call": True})
+        self.assertFalse(report["host"]["auxiliary_hook"])
+        self.assertEqual(report["layers"]["auxiliary"]["status"], "unavailable")
+        self.assertIn("auxiliary_observer_adapter_not_implemented", report["layers"]["auxiliary"]["reasons"])
+        self.assertFalse(report["capture_verified"])
+
+    def test_partial_observers_keep_legacy_contract_independent(self):
+        self.set_hooks(self.main_hooks + ["on_aux_usage", "pre_auxiliary_call"])
+        report = self.run_status()
+        self.assertEqual(report["host"]["auxiliary_observer_hooks"],
+                         {"pre_auxiliary_call": True, "post_auxiliary_call": False})
+        self.assertEqual(report["layers"]["auxiliary"]["status"], "candidate")
+        self.assertFalse(report["capture_verified"])
+
+    def test_observer_absence_and_unknown_remain_distinct(self):
+        report = self.run_status()
+        self.assertEqual(set(report["host"]["auxiliary_observer_hooks"].values()), {False})
+        (self.host / "hermes_cli/plugins.py").unlink()
+        report = self.run_status()
+        self.assertEqual(set(report["host"]["auxiliary_observer_hooks"].values()), {None})
+
     def test_disabled_plugin_and_retained_store_are_independent(self):
         self.config["plugins"]["disabled"] = ["orch-usage"]
         (self.home / "usage-hooks").mkdir()

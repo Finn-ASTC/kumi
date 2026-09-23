@@ -5,7 +5,7 @@ description: "Drive Codex CLI through herdr or tmux, or run a bounded task with 
 
 # Codex 指令字典
 
-用于实际启动/操控 Codex CLI；主编排流程见 [agent-orchestrator](../agent-orchestrator/SKILL.md)，回传语义见 [agent-controlled](../agent-controlled/SKILL.md)。本地核对基线：Codex CLI **0.154.0**。不同版本先查本机 `codex --help` 和对应子命令帮助。
+用于实际启动/操控 Codex CLI；主编排流程见 [agent-orchestrator](../agent-orchestrator/SKILL.md)，回传语义见 [agent-controlled](../agent-controlled/SKILL.md)。本地 CLI 帮助核对：**0.155.1（2026-09-23）**；exec 恢复实验为 0.154.0，后续原生监督实验为 0.155.0，不能据此宣称 0.155.1 全行为通过。不同版本先查本机 `codex --help` 和对应子命令帮助。
 
 ## 选择入口
 

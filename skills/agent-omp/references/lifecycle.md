@@ -1,8 +1,16 @@
 # omp lifecycle observations
 
-Version basis: executable `omp/18.2.6`, CLI help checked 2026-09-20. Earlier Esc/approval
-tests used 18.2.3. The separately installed npm source tree is 17.3.5; do not infer that
-its internals match the compiled 18.2.6 executable.
+Version basis: executable `omp/18.2.11`, CLI help checked 2026-09-23. Native supervision
+used 18.2.6; earlier Esc/approval tests used 18.2.3. The separately installed npm source
+tree is 17.3.5; do not infer that its internals match the compiled executable. CLI help
+checks do not certify approval, cancellation or metering on the newer version.
+
+Upstream [18.2.10](https://github.com/can1357/oh-my-pi/releases/tag/v18.2.10) changes
+job-summary consumption and streamed subagent retries;
+[18.2.11](https://github.com/can1357/oh-my-pi/releases/tag/v18.2.11) fixes background
+completion interrupting foreground Bash/eval. Recheck native task delivery, retries,
+owned background cancellation and usage attribution together after upgrading. An
+upstream fix is not kumi integration evidence; retain unknown coverage when absent.
 
 Use `/session info` in the input-ready target to retain its native identity and storage
 path. Preserve cwd, launch argv and profile. Current help supports `--session-dir`,

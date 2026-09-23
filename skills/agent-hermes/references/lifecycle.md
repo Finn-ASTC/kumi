@@ -4,6 +4,15 @@ Version basis: local Hermes 0.21.3, reported upstream `64ea66b0`, inspected 2026
 The earlier Ctrl+C foreground-process test used 0.20.5. Recheck actual bindings after
 upgrades; source inspection is not a new model/cancellation test.
 
+The same 0.21.3 checkout was inspected again on 2026-09-23. Its native
+`hermes_cli/approval_transport.py` passed synthetic request-binding, deny, timeout,
+late-response and scope checks. This is a library-contract check, not an installed
+approval service or TUI cancellation test. The documented
+[approval transport](https://hermes-agent.nousresearch.com/docs/user-guide/features/plugins#approval-transports)
+presents requests to a human; it does not grant plugin policy or model auto-approval.
+Its request ID/digest and allowed choices are promising inputs for a future human
+window bridge. Redacted display text is not proof of complete decision input.
+
 For new controlled tasks, use the [per-run storage isolation recipe](isolation.md)
 when existing routing, credentials, approval policy and runtime dependencies can be
 preserved. It disables two automatic background systems in a private config copy;

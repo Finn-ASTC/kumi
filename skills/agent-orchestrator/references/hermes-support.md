@@ -73,6 +73,7 @@ host import output, exception messages, endpoints or credentials.
 | Field | Meaning |
 |---|---|
 | `host.*` | Advertised hook names in the selected checkout; import/origin failures are unknown |
+| `host.auxiliary_observer_hooks` | Independent presence of `pre_auxiliary_call` / `post_auxiliary_call`; null when the registry is unknown, not proof of collector support |
 | `plugin.files` | `matches_package`, `missing`, `different` or `unreadable`; modified code is not executed |
 | `plugin.configured_enabled` | Explicit configuration intent; null if parsing/dependency/config shape is unknown |
 | `layers.main_loop/auxiliary.status` | `candidate`: checked prerequisites met; `unavailable`: a negative prerequisite; `unknown`: insufficient evidence |
@@ -104,6 +105,14 @@ can still be inspected separately; `layers.auxiliary` describes the optional rec
 hook layer, not native cumulative-data availability. Enabling the collector cannot add the
 missing native hook. If the host import is unknown, recheck the selected interpreter
 and checkout; do not relabel unknown as unsupported or install a patch automatically.
+
+The upstream [auxiliary observer contract](https://hermes-agent.nousresearch.com/docs/developer-guide/plugins)
+also describes `pre_auxiliary_call` / `post_auxiliary_call`. These are per-provider-attempt
+observers with different identity and payload semantics from `on_aux_usage`. The diagnostic
+reports their presence separately; the current collector does not implement them. If they
+are present without `on_aux_usage`, `auxiliary_observer_adapter_not_implemented` explains
+the gap. Do not rename hooks or mark this layer available merely because names exist.
+Local 0.21.3 at `64ea66b03d` exposes neither of these new observer names.
 
 A disabled collector may leave old stores. A missing store means no evidence,
 never zero cost. Validate exact-session main-loop or auxiliary records with the
