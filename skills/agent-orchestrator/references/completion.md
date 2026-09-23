@@ -109,6 +109,67 @@ snapshot and attempt. A baseline, the author's attempt or a failed attempt canno
 satisfy this acceptance. Record a separate current host observation and use
 `check-completion`/`close` below; accepted verification output does not settle its host.
 
+## Per-round review and follow-up
+
+Before activating a successor to a `success` response, record a valid review with
+`accept`: either `accepted` for the reviewed result or `rejected` for rework. Missing,
+changed or mismatched evidence blocks activation. A rejected delivery may use a
+complete, intact **failed** verification attempt; accepted delivery still requires a
+passing attempt. Valid `blocked` and `error` responses can continue without success
+acceptance. `prepare --previous` alone remains preparation, not activation or input.
+
+Activation stores the predecessor's exact result hash and review status at the time
+of transition. It clears current acceptance and host observations for the successor.
+This review gate does not settle the host: check input readiness and retain supervision
+before sending. `close completed` continues to require fresh scoped host evidence.
+
+Query any indexed round, including legacy history, without a lease or terminal I/O:
+
+```bash
+python3 "$JOBS_TOOL" round-status --index "$INDEX" --job "$JOB_ID" --round-id "$OLD_ROUND"
+```
+
+Omitting `--round-id` selects the active round. The response separates current evidence
+validity (`acceptance.status`: accepted/rejected/missing/invalid/not_applicable) from
+the original `transition`. `not_applicable` means a valid blocked/error response has
+no success acceptance. Legacy transitions without a checked receipt report
+`unknown_legacy`; later annotations cannot make them appear reviewed at that time.
+Exit 0 means the query succeeded, including missing/rejected/invalid reviews; inspect
+the status. This is not `check-completion` and makes no live-host readiness claim.
+
+To backfill or revise a review, use the **current job revision and live lease**, but
+select the old round explicitly. The payload is the same answer/delivery review
+shown above; delivery must use that old round's own snapshot and verification attempt.
+
+```bash
+python3 "$JOBS_TOOL" accept --index "$INDEX" --job "$JOB_ID" \
+  --round-id "$OLD_ROUND" --expect-revision "$REVISION" --token "$TOKEN" \
+  --input "$OLD_ACCEPTANCE_FILE"
+```
+
+The returned revision advances, but the current round, submission, native identity,
+watch and completion remain unchanged. `recorded_at` is the actual annotation time;
+`backfilled: true` and `recorded_revision` locate it. Old revision files and the
+original transition receipt stay unchanged. Query the selected round again to inspect
+the result; default mutation replies retain only current-round details. Full index
+history retains superseded reviews. Prepared but never activated rounds and another
+job's rounds cannot be annotated. Known historical result hashes must still match;
+legacy unreviewed results without a retained hash can only be reviewed as observed now.
+
+For an already closed job, acquire a limited review lease:
+
+```bash
+python3 "$JOBS_TOOL" claim --index "$INDEX" --job "$JOB_ID" \
+  --expect-revision "$REVISION" --owner "$REVIEWER_ID" --acceptance-only
+```
+
+Use the returned token and revision for `accept`, then release the lease. This lease
+permits only `accept`, `renew` and `release`, including when used on an open job; it
+cannot submit, activate, close or record host activity. It cannot take over a live
+lease. The original `closed` record and `closed.completion` remain unchanged; a later
+negative review can disagree with that historical closure without reopening the job
+or certifying its current quality. No new host observation is fabricated.
+
 ## Scoped host observation
 
 Read the selected host reference: [Hermes](../../agent-hermes/references/lifecycle.md),

@@ -132,7 +132,7 @@ python3 tests/e2e_runner.py watch-init --runner "$RUNNER"
 | `checkpoint` | 读取待办和当前监督覆盖，给下一段独立工作预算；未知/失效/即将到期时要求先处理 |
 | `bind --target … --input …` | 仅处理 start_uncertain；输入含 `resources`、`evidence_path`、`note`。核对原启动 session/父资源/归属、原资源文件（若有）和 live 身份后恢复 started，不分配或重启 |
 | `claim --target … --input …` | 确认前控制器已停后，用 evidence_path/note 显式接管过期租约；保留 uncertain，不表示允许重发 |
-| `follow --target … --input packet.json --note …` | 同 job 和资源的新轮，要求作者明确交接；新建编辑前基线并保留旧结果 |
+| `follow --target … --input packet.json --note …` | 同 job 和资源的新轮，要求作者明确交接；success 前轮须先 verify 并记录 accepted/rejected，blocked/error 可正常续轮；新建编辑前基线并保留旧结果 |
 | `reconcile-round --target …` | 从已保存 candidate_round 恢复激活中断；不再次 prepare 或发送，只接续尚未提交的候选轮 |
 | `verify --target … --note …` | 同轮有效 success 后捕获固定源码副本，在独立目录执行 scenario 中的 plan，记录 accepted/rejected。重跑新增 attempt，旧证据不改写 |
 | `native --target … --input …` | 显式绑定查证后的 native session_id/turn_id，附 evidence_path/note；不按时间猜归属 |

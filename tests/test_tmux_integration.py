@@ -222,6 +222,13 @@ os._exit(17)  # no acceptance receipt or finally block
         (self.cwd / "controller-acceptance.txt").write_text("Check both round identities and delivery counts.")
         follow = prepare_task("Verify the sibling result", previous=sibling["request_path"])
         state = states[sibling["job_id"]]
+        sibling_result = protocol.validate_result(protocol.load_request(sibling["request_path"]),
+                                                   protocol.read_json(sibling["result_path"]))
+        self.assertEqual(sibling_result["status"], "success")
+        state = jobs.change(run["index_path"], state["job_id"], state["revision"], state["lease"]["token"],
+                            "accept", {"kind": "answer", "verdict": "accepted",
+                                       "evidence_path": str(self.cwd / "controller-acceptance.txt"),
+                                       "note": "Reviewed fixture response and exact round identity"})
         state = jobs.change(run["index_path"], state["job_id"], state["revision"], state["lease"]["token"],
                             "activate", {"request_path": follow["request_path"]})
         state = jobs.change(run["index_path"], state["job_id"], state["revision"], state["lease"]["token"], "begin", {})

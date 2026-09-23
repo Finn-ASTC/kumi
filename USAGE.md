@@ -60,6 +60,10 @@ herdr 中默认每个子任务新建一个 **workspace（space）**，初始 tab
 
 子 agent 通过独立 JSON 文件返回 `success`、`blocked` 或 `error`。每轮有新的 `round_id` 和 `result_path`，同一 job 同时只有一个活动轮次；有效结果发布后不覆盖。
 
+success 轮次切到下一轮前，要记录有效的“接受”或“拒收”及证据；拒收可以继续返工。
+blocked/error 保留正常续轮路径。旧轮验收可按轮查询与补记，补记时间和当时的切轮状态
+分别保留，不会让当前轮自动通过验收。操作见[按轮验收](skills/agent-orchestrator/references/completion.md#per-round-review-and-follow-up)。
+
 | 意图 | 可以对调度方说 |
 |---|---|
 | 回答追问 | “按方案 B 继续这个任务，保留上一轮结果并生成续轮。” |

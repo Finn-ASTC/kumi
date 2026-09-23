@@ -40,8 +40,8 @@ def delivery_check(attempt_path: str, expected: dict[str, Any]) -> dict[str, Any
     return report
 
 
-def record_acceptance(state: dict[str, Any], payload: dict[str, Any], now: float) -> None:
-    """Accept/reject an answer or independently verified delivery under the job lease."""
+def acceptance_record(state: dict[str, Any], payload: dict[str, Any], now: float) -> dict[str, Any]:
+    """Validate a review against one exact round, independent of the current job head."""
     kind = payload.get('kind')
     protocol.require(kind in ('answer', 'delivery'), 'acceptance kind must be answer or delivery')
     keys = {'kind', 'verdict', 'evidence_path', 'note'} | ({'attempt_path'} if kind == 'delivery' else set())
@@ -63,7 +63,58 @@ def record_acceptance(state: dict[str, Any], payload: dict[str, Any], now: float
         if payload['verdict'] == 'accepted':
             protocol.require(report['passed'], 'accepted delivery must have passed independent checks')
         record['attempt'] = {'path': str(path), 'sha256': jobs.fingerprint(path)}
-    state.setdefault('completion', {})['acceptance'] = record
+    return record
+
+
+def record_acceptance(state: dict[str, Any], payload: dict[str, Any], now: float) -> None:
+    """Append a current review or a historical annotation under the job's live lease."""
+    import round_history
+    payload = dict(payload)
+    round_id = payload.pop('round_id', state['round_id'])
+    selected, transition = round_history.select(state, round_id)
+    record = acceptance_record(selected, payload, now)
+    historical = round_id != state['round_id']
+    if historical or state['closed'] is not None:
+        previous = selected.get('completion', {}).get('acceptance') or {}
+        pinned_result = (transition or {}).get('result_sha256', previous.get('result_sha256'))
+        protocol.require(pinned_result is None or pinned_result == record['result_sha256'],
+                         'historical result changed; cannot annotate replacement bytes')
+    record.update(backfilled=historical or state['closed'] is not None,
+                  recorded_revision=state['revision'] + 1)
+    if historical:
+        state.setdefault('historical_acceptance', {})[round_id] = record
+    else:
+        state.setdefault('completion', {})['acceptance'] = record
+
+
+def acceptance_summary(state: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    """Distinguish a valid negative review from missing or changed evidence."""
+    record = state.get('completion', {}).get('acceptance')
+    if result['status'] in ('blocked', 'error') and record is None:
+        return {'status': 'not_applicable', 'valid': False, 'reason': 'no success response to accept'}
+    if record is None:
+        return {'status': 'missing', 'valid': False, 'reason': 'independent acceptance is missing'}
+    try:
+        protocol.require(result['status'] == 'success', 'acceptance needs a valid success response')
+        identity = binding(state, result)
+        protocol.require(record['version'] == 1 and all(record[k] == v for k, v in identity.items()),
+                         'acceptance identity changed')
+        evidence_valid(record)
+        protocol.require(record['verdict'] in ('accepted', 'rejected'), 'invalid acceptance verdict')
+        if record['kind'] == 'delivery':
+            ref = record['attempt']
+            protocol.require(jobs.fingerprint(Path(ref['path'])) == ref['sha256'], 'delivery attempt changed')
+            report = delivery_check(ref['path'], identity)
+            if record['verdict'] == 'accepted':
+                protocol.require(report['passed'], 'delivery has not passed')
+        else:
+            protocol.require(record['kind'] == 'answer', 'invalid acceptance kind')
+            response = protocol.read_json(result['path'])
+            protocol.require(not any(response[k] for k in protocol.FILE_FIELDS),
+                             'declared files require delivery acceptance')
+        return {'status': record['verdict'], 'valid': True, 'reason': None}
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError) as exc:
+        return {'status': 'invalid', 'valid': False, 'reason': str(exc)}
 
 
 def record_host(state: dict[str, Any], payload: dict[str, Any], now: float) -> None:
@@ -132,23 +183,10 @@ def summarize(state: dict[str, Any], result: dict[str, Any], now: float) -> dict
     if result['status'] != 'success':
         reasons.append('current round has no valid success response')
     acceptance, host = facts.get('acceptance'), facts.get('host')
-    if acceptance is None:
-        reasons.append('independent acceptance is missing')
-    else:
-        try:
-            protocol.require(acceptance['version'] == 1 and all(acceptance[k] == v for k, v in identity.items()),
-                             'acceptance identity changed')
-            evidence_valid(acceptance)
-            protocol.require(acceptance['verdict'] == 'accepted', 'verifier rejected the result')
-            if acceptance['kind'] == 'delivery':
-                ref = acceptance['attempt']
-                protocol.require(jobs.fingerprint(Path(ref['path'])) == ref['sha256'], 'delivery attempt changed')
-                protocol.require(delivery_check(ref['path'], identity)['passed'], 'delivery has not passed')
-            else:
-                protocol.require(acceptance['kind'] == 'answer', 'invalid acceptance kind')
-            accepted = result['status'] == 'success'
-        except (OSError, ValueError, KeyError, TypeError, RuntimeError) as exc:
-            reasons.append(f'acceptance: {exc}')
+    review = acceptance_summary(state, result)
+    accepted = review['status'] == 'accepted'
+    if not accepted:
+        reasons.append('acceptance: ' + (review['reason'] or 'verifier rejected the result'))
     if host is None:
         reasons.append('host observation is missing')
     else:
@@ -164,6 +202,7 @@ def summarize(state: dict[str, Any], result: dict[str, Any], now: float) -> dict
         except (OSError, ValueError, KeyError, TypeError, RuntimeError) as exc:
             reasons.append(f'host: {exc}')
     return {'response_published': published, 'response_status': result['status'],
+            'acceptance_status': review['status'],
             'accepted_by_verifier': accepted, 'host_settled': settled,
             'ready_to_complete': result['status'] == 'success' and accepted and settled,
             'acceptance_kind': acceptance.get('kind') if isinstance(acceptance, dict) else None,

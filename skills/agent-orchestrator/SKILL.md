@@ -140,7 +140,7 @@ For a clarification answer, revision, or recovery after a valid error, write a n
 python3 "$ORCH_TOOL" prepare --previous "$REQUEST_FILE" --task-file "$FOLLOWUP_FILE" --brief
 ```
 
-This inherits job, cwd, depth and run storage, copies the resource record, and generates new round IDs/paths. It requires a valid response to the preceding round. With the current job lease, use `jobs.py activate` to select this direct successor before `begin` and transport input. A competing activation fails; recover the recorded active request and leave any losing preparation unsent. `prepare` alone does not serialize submissions.
+This inherits job, cwd, depth and run storage, copies the resource record, and generates new round IDs/paths. It requires a valid response to the preceding round. After a success response, record accepted/rejected review evidence with `jobs.py accept` before activating its successor; blocked/error continuation needs no success acceptance. With the current job lease, use `jobs.py activate` to select this direct successor before `begin` and transport input. A competing activation fails; recover the recorded active request and leave any losing preparation unsent. `prepare` alone does not serialize submissions. See [per-round review](references/completion.md#per-round-review-and-follow-up) for historical queries and backfill.
 
 Keep the same native conversation for a related continuation and send the new requirements plus necessary facts; update the watch to the new active request. Record actual native call counters and attempt IDs using the [usage ledger](references/efficiency.md#native-usage-ledger), including unmetered attempts as null counters. Do not estimate tokens from bytes or double-count cached input.
 

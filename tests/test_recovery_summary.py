@@ -205,6 +205,11 @@ class RecoverySummaryTests(ToolCase):
         follow = self.prepare(root=None, previous=info["request_path"], cwd=None, parent_depth=None)
         state = jobs.load(Path(self.run["index_path"]), info["job_id"])
         state = jobs.claim(self.run["index_path"], info["job_id"], state["revision"], "controller", 100, now=102)
+        review = self.root / "round-review.txt"
+        review.write_text("Fixture response reviewed before continuation")
+        state = jobs.change(self.run["index_path"], info["job_id"], state["revision"], state["lease"]["token"],
+                            "accept", {"kind": "answer", "verdict": "accepted", "evidence_path": str(review),
+                                       "note": "Reviewed fixture answer"}, now=102)
         jobs.change(self.run["index_path"], info["job_id"], state["revision"], state["lease"]["token"],
                     "activate", {"request_path": follow["request_path"]}, now=102)
         new = self.add_watch([follow])

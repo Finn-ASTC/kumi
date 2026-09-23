@@ -188,11 +188,11 @@ def register(index: str | Path, request_path: str, now: float | None = None) -> 
         return save(index, state, "register", current)
 
 
-def expected(state: dict[str, Any], revision: int) -> None:
+def expected(state: dict[str, Any], revision: int, allow_closed: bool = False) -> None:
     """Require the revision the controller actually read, on every mutation."""
     protocol.require(type(revision) is int and revision == state["revision"],
                      "job revision conflict; recover before deciding")
-    protocol.require(state["closed"] is None, "job is closed")
+    protocol.require(allow_closed or state["closed"] is None, "job is closed")
 
 
 def duration(value: Any) -> float:
@@ -203,7 +203,8 @@ def duration(value: Any) -> float:
 
 
 def claim(index: str | Path, job: str, revision: int, owner: str,
-          lease_seconds: float = 300, now: float | None = None) -> dict[str, Any]:
+          lease_seconds: float = 300, now: float | None = None,
+          acceptance_only: bool = False) -> dict[str, Any]:
     """Acquire an unowned/expired job with a fresh local fencing token."""
     current = clock(now)
     require_text(owner, "owner")
@@ -211,10 +212,12 @@ def claim(index: str | Path, job: str, revision: int, owner: str,
     index = Path(index).resolve()
     with locked(index):
         state = load(index, job)
-        expected(state, revision)
+        expected(state, revision, allow_closed=acceptance_only)
         protocol.require(state["lease"] is None or state["lease"]["expires_at"] <= current,
                          "job is owned by a live lease; reconcile with its controller")
         state["lease"] = {"owner": owner, "token": uuid.uuid4().hex, "expires_at": expires_at}
+        if acceptance_only:
+            state["lease"]["scope"] = "acceptance"
         return save(index, state, "claim", current)
 
 
@@ -334,17 +337,18 @@ def update(state: dict[str, Any], payload: dict[str, Any]) -> None:
     state.update(payload)
 
 
-def activate(state: dict[str, Any], payload: dict[str, Any]) -> None:
+def activate(state: dict[str, Any], payload: dict[str, Any], now: float) -> None:
     """Select a single direct successor; orphan prepared directories remain unsent."""
     require_text(payload.get("request_path"), "request_path")
+    protocol.require(set(payload) == {"request_path"}, "invalid activation fields")
     record = request_record(payload["request_path"])
     request = protocol.load_request(record["request_path"])
     import runs
     runs.check_index(record["request_path"], state["index_path"])
     protocol.require(request.get("previous_request") == state["active_request"],
                      "follow-up previous_request must be the active round")
-    protocol.require(result_view(state)["status"] in ("success", "error", "blocked"),
-                     "active round needs a valid result before follow-up")
+    import round_history
+    transition = round_history.transition(state, record["round_id"], now)
     previous = protocol.load_request(state["active_request"])
     protocol.require(all(request[k] == previous[k] for k in ("job_id", "cwd", "depth", "max_depth")),
                      "follow-up must retain job, cwd and depth")
@@ -360,6 +364,7 @@ def activate(state: dict[str, Any], payload: dict[str, Any]) -> None:
     state["native"]["turn_id"] = None
     state["monitor"] = {"owner": None, "watch_path": None, "expires_at": None}
     state["completion"] = {}
+    state["last_transition"] = transition
 
 
 def change(index: str | Path, job: str, revision: int, token: str, action: str,
@@ -370,10 +375,13 @@ def change(index: str | Path, job: str, revision: int, token: str, action: str,
     index = Path(index).resolve()
     with locked(index):
         state = load(index, job)
-        expected(state, revision)
         lease = state["lease"]
+        acceptance_only = lease is not None and lease.get("scope") == "acceptance"
+        expected(state, revision, allow_closed=acceptance_only)
         protocol.require(lease is not None and lease["token"] == token and lease["expires_at"] > current,
                          "invalid or expired submission lease; recover before deciding")
+        protocol.require(not acceptance_only or action in ("accept", "renew", "release"),
+                         "acceptance-only lease cannot mutate submission or host state")
         if action == "begin":
             protocol.require(not payload, "begin takes no payload")
             begin(index, state, current)
@@ -382,7 +390,7 @@ def change(index: str | Path, job: str, revision: int, token: str, action: str,
         elif action == "update":
             update(state, payload)
         elif action == "activate":
-            activate(state, payload)
+            activate(state, payload, current)
         elif action in ("accept", "host"):
             import completion
             handler = completion.record_acceptance if action == "accept" else completion.record_host
@@ -406,6 +414,13 @@ def change(index: str | Path, job: str, revision: int, token: str, action: str,
         else:
             raise protocol.ProtocolError("unknown index action")
         return save(index, state, action, current)
+
+
+def round_status(index: str | Path, job: str, round_id: str | None = None) -> dict[str, Any]:
+    """Inspect one indexed round without taking ownership or observing terminals."""
+    import round_history
+    state = load(Path(index).resolve(), job)
+    return round_history.status(state, round_id if round_id is not None else state['round_id'])
 
 
 def recover(index: str | Path, job: str, now: float | None = None) -> dict[str, Any]:
@@ -465,7 +480,9 @@ def compact(state: dict[str, Any]) -> dict[str, Any]:
     """Keep CLI replies bounded to the active round/attempt, with history on disk."""
     attempts = [a for a in state["attempts"] if a["round_id"] == state["round_id"]]
     latest = [{**attempts[-1], "receipts": attempts[-1]["receipts"][-1:]}] if attempts else []
-    return {**state, "rounds": state["rounds"][-1:], "attempts": latest,
+    return {**{k: v for k, v in state.items() if k != "historical_acceptance"},
+            "historical_acceptance_count": len(state.get("historical_acceptance", {})),
+            "rounds": state["rounds"][-1:], "attempts": latest,
             "round_count": len(state["rounds"]), "attempt_count": len(state["attempts"]),
             "history_directory": str(Path(state["index_path"]) / state["job_id"])}
 
@@ -475,7 +492,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     actions = ("register", "list", "recover", "claim", "begin", "receipt", "update", "activate",
-               "renew", "release", "close", "accept", "host", "check-completion")
+               "renew", "release", "close", "accept", "host", "check-completion", "round-status")
     for name in actions:
         command = commands.add_parser(name)
         command.add_argument("--index", required=True, help="one shared persistent index directory per run")
@@ -485,11 +502,15 @@ def main() -> int:
             command.add_argument("--job", required=True)
         if name == "recover":
             command.add_argument("--history", action="store_true", help="include all round/attempt metadata")
-        if name not in ("register", "list", "recover", "check-completion"):
+        if name in ("accept", "round-status"):
+            command.add_argument("--round-id", help="exact indexed round; defaults to the active round")
+        if name not in ("register", "list", "recover", "check-completion", "round-status"):
             command.add_argument("--expect-revision", required=True, type=int)
             if name == "claim":
                 command.add_argument("--owner", required=True)
                 command.add_argument("--lease-seconds", type=float, default=300)
+                command.add_argument("--acceptance-only", action="store_true",
+                                     help="review-only lease, including closed jobs; no submission/host mutation")
             else:
                 command.add_argument("--token", required=True, help="token returned by claim; never infer ownership")
                 if name not in ("begin", "release"):
@@ -502,18 +523,25 @@ def main() -> int:
             output = inventory(args.index)
         elif args.command == "recover":
             output = recover(args.index, args.job)
+        elif args.command == "round-status":
+            output = round_status(args.index, args.job, args.round_id)
         elif args.command == "check-completion":
             view = recover(args.index, args.job)
             output = {"job_id": args.job, "round_id": view["state"]["round_id"], **view["completion"]}
         elif args.command == "claim":
-            output = claim(args.index, args.job, args.expect_revision, args.owner, args.lease_seconds)
+            output = claim(args.index, args.job, args.expect_revision, args.owner, args.lease_seconds,
+                           acceptance_only=args.acceptance_only)
         else:
             payload = protocol.read_json(args.input) if getattr(args, "input", None) else {}
+            if args.command == "accept" and args.round_id is not None:
+                protocol.require("round_id" not in payload or payload["round_id"] == args.round_id,
+                                 "conflicting acceptance round_id")
+                payload = {**payload, "round_id": args.round_id}
             output = change(args.index, args.job, args.expect_revision, args.token, args.command, payload)
         if args.command == "recover":
             if not args.history:
                 output["state"] = compact(output["state"])
-        elif args.command not in ("list", "check-completion"):
+        elif args.command not in ("list", "check-completion", "round-status"):
             output = compact(output)
             if args.command == "register" and output["lease"] is not None:
                 output["lease"] = {k: v for k, v in output["lease"].items() if k != "token"}

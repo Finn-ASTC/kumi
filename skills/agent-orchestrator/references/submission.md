@@ -138,7 +138,11 @@ python3 "$JOBS_TOOL" activate --index "$INDEX" --job "$JOB_ID" \
 
 `ACTIVATION_FILE` contains `{"request_path":"/absolute/new-round/request.json"}`.
 Activation requires a valid response to the currently active predecessor, the same
-job/cwd/depth/resources, and a fresh round. It preserves history, clears the old watch
+job/cwd/depth/resources, and a fresh round. A success predecessor also needs a valid
+accepted or rejected review; blocked/error may continue without success acceptance.
+The transition retains that review status and exact result hash; see
+[per-round review and follow-up](completion.md#per-round-review-and-follow-up) for
+historical queries and annotations. Activation preserves history, clears the old watch
 and native turn binding, and makes the successor `prepared`. Competing preparations
 can leave unused directories, but only one direct successor can become active.
 On conflict, recover and use the recorded active request; never send the losing prompt.
