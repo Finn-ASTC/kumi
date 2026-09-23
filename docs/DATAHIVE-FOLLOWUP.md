@@ -15,15 +15,15 @@
 用户要求后续默认在**调度方所在的同一个 space 中新增 tab**，标题同时说明
 **做什么任务、由什么 agent 执行**。这替代此前“默认每个子 agent 新建 space”的偏好。
 
-- [ ] 已确认 herdr 父 workspace、tab、pane 时，新子 agent 默认在该 workspace 创建独立 tab，保留当前页面和焦点（`--no-focus`）。
-- [ ] 标题采用“任务目的 · agent 类型”，例如 `修复重试逻辑 · Codex`、`验证存储一致性 · Hermes`、`检查测试覆盖 · omp`、`实现提取模块 · OpenCode/OMO`。同名任务加短编号；标题不代替精确资源 ID。
-- [ ] OpenCode 的 OMO/pure 按实际启动配置标注；关联续轮保留原 tab，任务目的或执行 agent 变化时同步更新标题与资源记录。
-- [ ] 新 space 保留为显式选项；分屏仍需明确要求。没有可确认的父 space 时沿用隔离传输选择，说明实际布局，不猜测 focused/default 资源。
-- [ ] 审批与巡视同样保留用户当前页面；避免现场脚本强行聚焦子 tab 后跳回写死的父页面。
-- [ ] 实现时统一更新主 skill、transport 配方、用户指南及 runner 的默认布局和标题生成，覆盖同 space 多 tab、重名、续轮、归属与清理回归，再单独验收桌面 viewer。
+- [x] 已确认 herdr 父 workspace、tab、pane 时，新子 agent 默认在该 workspace 创建独立 tab，保留当前页面和焦点（`--no-focus`）。
+- [x] 标题采用“任务目的 · agent 类型”，例如 `修复重试逻辑 · Codex`、`验证存储一致性 · Hermes`、`检查测试覆盖 · omp`、`实现提取模块 · OpenCode (OMO)`。同名任务加短编号；标题不代替精确资源 ID。
+- [x] OpenCode 的 OMO/pure 按实际启动配置标注；关联续轮保留原 tab。明确更换目的时按配方更新显示回执，不改不可变资源记录；换宿主需要新启动，不能仅改名。runner follow 不自动推断目的变化。
+- [x] 新 space 保留为显式选项；分屏仍需明确要求。没有可确认的父 space 时沿用隔离传输选择，说明实际布局，不猜测 focused/default 资源。
+- [x] 配方明确审批与巡视保留用户当前页面；避免强行聚焦子 tab 后跳回写死的父页面。审批端到端体验继续由 DH-03/AP 跟进。
+- [x] 主 skill、transport 配方、用户指南及 runner 默认布局和标题规则已统一；同 space 多 tab、重名、续轮、归属与清理有回归。独立 kitty/herdr viewer 验证显示和 no-focus；窄窗口长标题会截断。
 
-**现状：** `d90cc8d` 的运行说明与 runner 仍默认新 workspace，标题只要求任务目的；
-本次记录不意味着该默认行为已切换。用户在当前会话明确指定的 tab 偏好应直接遵循。
+**现状：** UX-01 本批实现与限定桌面验证已完成，范围及剩余限制见
+[页面体验验证](UX1-PAGES.md)。未同步到个人已安装 skills。
 
 ## 来源与核对口径
 

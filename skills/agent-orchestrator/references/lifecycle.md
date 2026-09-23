@@ -128,8 +128,8 @@ Run cleanup only after completion/cancellation, not at async handoff. Read `reso
 
 | Resource situation | Allowed cleanup |
 |---|---|
-| Insider new workspace (default) | Exit owned child; close only the recorded child workspace after checking its contents. Parent workspace/tab/pane and session remain. |
-| Insider new tab | Exit owned child; close only the recorded child tab. Parent tab, workspace and session remain. |
+| Insider new workspace (explicit) | Exit owned child; close only the recorded child workspace after checking its contents. Parent workspace/tab/pane and session remain. |
+| Insider new tab (default) | Exit owned child; close only the recorded child tab. Parent tab, workspace and session remain. |
 | Insider explicitly requested split | Exit owned child; close that pane only. Parent pane/tab/workspace and session remain. |
 | Workspace created in a shared isolated session | Exit owned target; close own workspace when no other job/user resource is inside. Do not stop session. |
 | Session created exclusively by this controller | After all its jobs finish, exit owned agents, close owned workspaces, stop that named session, then delete it. |

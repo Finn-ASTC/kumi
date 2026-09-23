@@ -9,6 +9,7 @@
 | 下一轮实施顺序、三级审批、验收接班与协作的统一计划 | [综合实施计划](IMPLEMENTATION-PLAN.md) |
 | 计量计划、阶段采集、缺口与重复导入验证 | [CQ-01 最小计量闭环](CQ1-METERING.md) |
 | 按轮查询与补记验收、切轮门槛和历史兼容 | [DH-01 按轮验收](DH1-ROUND-ACCEPTANCE.md) |
+| 同 space 默认 tab、任务＋agent 标题及桌面验证 | [UX-01 页面体验](UX1-PAGES.md) |
 | 回归测试和探针 | [测试索引](../tests/README.md) |
 | 恢复摘要的验证与输出规模 | [C1 验证记录](C1-RECOVERY.md) |
 | 增量读取、续读与失效验证 | [C2 验证记录](C2-RECOVERY.md) |

@@ -6,7 +6,7 @@ Read only the mode being used. These are Bash recipes with variables bound to **
 
 | Condition | Mode | Isolation and ownership |
 |---|---|---|
-| `HERDR_ENV=1`, herdr available, current pane/session positively identified | Insider | New workspace in the same session by default; new tab if requested. Own only newly created child resources. |
+| `HERDR_ENV=1`, herdr available, current pane/session positively identified | Insider | New tab in the verified parent workspace by default; new workspace if requested. Own only newly created child resources. |
 | herdr available, no usable current pane | Isolated | Start a unique named headless session and create its first workspace. |
 | herdr unavailable or unusable before submission, tmux available | tmux | Dedicated named session; no agent state machine. |
 | Neither usable | Stop with the concrete missing dependency. | Do not assume a target started. |
@@ -19,13 +19,13 @@ Display is independent of transport, asynchronous execution and resource ownersh
 
 | Preference | Behavior |
 |---|---|
-| Unspecified | In the identified herdr session, create a new workspace per child with `--no-focus`. Otherwise create an isolated session and give a concrete attach command. |
+| Unspecified | In the identified herdr session, create a new tab in the parent workspace with `--no-focus`. If the parent cannot be positively identified, create an isolated workspace/session and give a concrete attach command. |
 | New tab | Create a new tab in the identified parent workspace with `--no-focus`; preserve the parent tab. |
 | Show the agent / switch to it | Create the new workspace/tab, then focus it when the user asks to switch. If a separate session is necessary, attach in an available, authorized user-facing terminal or give the exact attach command. |
 | Split / side by side | Split the identified parent pane with `--no-focus`; this is an explicit layout choice. |
 | Background / do not disturb | Keep the new workspace/tab unfocused in an identified session; otherwise use an isolated session. Retain viewing details; honor an explicit separate-session request. |
 
-`--no-focus` preserves the user's current page and input focus; the new workspace/tab is available to select, not automatically on screen. A headless session has no user-facing viewer just because it contains a pane. No verified current session/parent means no guessing a focused container. This project's workspace default is intentional, including when a generic herdr guide recommends sibling splits.
+`--no-focus` preserves the user's current page and input focus; the new workspace/tab is available to select, not automatically on screen. A headless session has no user-facing viewer just because it contains a pane. No verified current session/parent means no guessing a focused container. This project's same-workspace/new-tab default is intentional, including when a generic herdr guide recommends sibling splits.
 
 After interactive startup, report the agent/profile, session, workspace/tab/pane, and whether the target page was focused or is available to switch to. Fill commands with actual recorded values and shell-quote them; do not hand the user unresolved `$SESSION` placeholders. For explicit background requests, keep these details in the receipt and include the task handle in the next status update.
 
@@ -64,13 +64,32 @@ Watching does not transfer input ownership. If the user wants to type or answer 
 
 First run `prepare` from the main skill. Bind `PROJECT_CWD`, `REQUEST_FILE`, `PROMPT_FILE` and `RESULT_FILE` to the returned values; `ORCH_TOOL` is the helper path. Use unique lowercase internal agent names such as `orch-` plus a UUID suffix. Agent names must match `[a-z][a-z0-9_-]{0,31}`.
 
-### Name pages by their task
+### Name pages by their task and host
 
-Set `LABEL` to a short **action + subject** in the user's language, such as `实现上传重试` or `验证上传兼容性`. Every new herdr workspace/tab receives `--label "$LABEL"`. For duplicate purposes, add a short discriminator (`验证上传兼容性 · 2`); add the project or host only when it helps distinguish pages. The task purpose comes first, so the user can scan the page list without opening terminals.
+Set `LABEL` to **task purpose + agent type** in the user's language, such as `实现上传重试 · Codex` or `验证上传兼容性 · OpenCode (OMO)`. Every new herdr workspace/tab receives `--label "$LABEL"`. For duplicate purposes, add a short discriminator (`验证上传兼容性 · Codex · 2`). The task purpose comes first, so the user can scan the page list without opening terminals. The OpenCode suffix must reflect the actual OMO or pure profile.
+
+Use the shared read-only planner before allocation (the runner uses this same helper):
+
+```bash
+python3 "$(dirname "$ORCH_TOOL")/pages.py" --session "$SESSION" --cwd "$PROJECT_CWD" \
+  --purpose "验证上传兼容性" --kind codex \
+  --parent-pane "$PARENT_PANE" --parent-tab "$PARENT_TAB"
+```
+
+It checks live parent pane/tab membership and existing titles, then returns `label`, `layout`,
+`create_argv` and ownership flags. Execute `create_argv` as an argv array, never with `eval`.
+The default `auto` chooses a tab with complete parent IDs; no parent chooses a workspace in the
+explicitly selected isolated session. Partial/stale/mismatched parent identity fails; do not
+silently drop it and guess another page. Use `--layout workspace` for an explicit new space,
+or `--opencode-mode pure` for a pure-profile title. The planner reads metadata only and does
+not allocate, focus, launch, or reserve labels. Serialize sibling allocations under the controller;
+independent controllers can race on display labels, which are never identity or ownership keys.
+Record the plan before execution and returned IDs immediately afterwards. Verify the child
+`pane get` response's `tab_id` and `workspace_id` before starting its agent.
 
 The visible label and the unique internal `AGENT` name are separate. Store the chosen label with the exact resource IDs in the controller receipt; labels are never resource selectors. Pass labels as quoted data, just like prompts.
 
-Keep the page and label for a related follow-up. If its purpose changes, rename only the verified owned workspace/tab using `workspace rename "$WORKSPACE" "$LABEL"` or `tab rename "$TAB" "$LABEL"`, with the recorded `--session`. Update the receipt. Viewing an existing job uses its IDs and leaves its label and task unchanged. For a new workspace, give its initial tab the same task label after reading the returned tab ID.
+Keep the page and label for a related follow-up. If its purpose changes, rename only the verified owned workspace/tab using `workspace rename "$WORKSPACE" "$LABEL"` or `tab rename "$TAB" "$LABEL"`, with the recorded `--session`. Update only the display receipt; immutable `resources.json` stays unchanged. A different host/profile requires a fresh launch with its own identity, never just a renamed existing host. Viewing an existing job uses its IDs and leaves its label and task unchanged. For a new workspace, give its initial tab the same task label after reading the returned tab ID.
 
 Resolve launch arguments from the target dictionary before `agent start`. [OpenCode / OMO](../../agent-opencode/SKILL.md) has two profiles using the same kind: default `opencode` loads configured OMO; explicit pure uses `-- --pure` after the herdr startup options. In tmux pass `--pure` as a separate executable argument. Keep the chosen profile on fallback/resume. Pure disables external plugins, including the locally installed herdr reporting integration, so verify actual TUI readiness rather than assuming hook-based state is available.
 
@@ -91,7 +110,27 @@ herdr --session "$SESSION" status
 herdr --session "$SESSION" pane get "$PARENT_PANE"
 ```
 
-**Default: a new workspace in the same session.** Create it without changing the parent page:
+Require the returned `.result.pane.tab_id` and `.result.pane.workspace_id` to match the exact parent IDs; a shared workspace prefix is insufficient. Observation or approval handling must not focus a child or jump back to a fixed parent page.
+
+**Default: a new tab in the parent workspace.**
+
+```bash
+herdr --session "$SESSION" tab create --workspace "$PARENT_WORKSPACE" \
+  --cwd "$PROJECT_CWD" --label "$LABEL" --no-focus
+```
+
+Read `TAB` and `PANE` from `.result.tab` and `.result.root_pane`; `WORKSPACE` is the verified `PARENT_WORKSPACE`. Start the agent, then record:
+
+```bash
+python3 "$ORCH_TOOL" record --request "$REQUEST_FILE" --mode insider \
+  --session "$SESSION" --agent "$AGENT" --pane "$PANE" --workspace "$WORKSPACE" \
+  --tab "$TAB" --parent-pane "$PARENT_PANE" --parent-tab "$PARENT_TAB" \
+  --owns-agent --owns-pane --owns-tab
+```
+
+Own the new tab, not the parent workspace. The helper requires exact, distinct parent/child tab IDs. Before recording, check that the returned pane actually belongs to that tab; workspace prefixes alone cannot prove tab membership. If the installed server cannot create the requested page, report the limitation rather than silently splitting the parent.
+
+**Explicit workspace layout.** Create it without changing the parent page:
 
 ```bash
 herdr --session "$SESSION" workspace create --cwd "$PROJECT_CWD" --label "$LABEL" --no-focus
@@ -109,24 +148,6 @@ python3 "$ORCH_TOOL" record --request "$REQUEST_FILE" --mode insider \
 ```
 
 The helper requires the owned workspace to differ from the recorded parent pane's workspace. It never allows insider session ownership. The new workspace's initial tab is covered by workspace ownership.
-
-**Requested tab: a new tab in the parent workspace.**
-
-```bash
-herdr --session "$SESSION" tab create --workspace "$PARENT_WORKSPACE" \
-  --cwd "$PROJECT_CWD" --label "$LABEL" --no-focus
-```
-
-Read `TAB` and `PANE` from `.result.tab` and `.result.root_pane`; `WORKSPACE` is the verified `PARENT_WORKSPACE`. Start the agent, then record:
-
-```bash
-python3 "$ORCH_TOOL" record --request "$REQUEST_FILE" --mode insider \
-  --session "$SESSION" --agent "$AGENT" --pane "$PANE" --workspace "$WORKSPACE" \
-  --tab "$TAB" --parent-pane "$PARENT_PANE" --parent-tab "$PARENT_TAB" \
-  --owns-agent --owns-pane --owns-tab
-```
-
-Own the new tab, not the parent workspace. The helper requires exact, distinct parent/child tab IDs. Before recording, check that the returned pane actually belongs to that tab; workspace prefixes alone cannot prove tab membership. If the installed server cannot create the requested page, report the limitation rather than silently splitting the parent.
 
 **Explicit split request only:**
 

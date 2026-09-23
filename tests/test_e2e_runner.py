@@ -1,17 +1,15 @@
 """The live runner composes real bookkeeping; only external terminal I/O is faked."""
 import json
 from pathlib import Path
-import subprocess
 import sys
 import tempfile
 import time
 import unittest
 from unittest.mock import patch
 
-from test_token_tools import SCRIPTS
+from test_token_tools import SCRIPTS  # noqa: F401
 import protocol
 import jobs
-import runs
 import watch
 
 try:
@@ -58,6 +56,12 @@ class RunnerTests(unittest.TestCase):
                      'root_pane':{'pane_id':'wZ:pB'}}
         elif 'tab' in argv and 'create' in argv:
             value = {'tab':{'tab_id':'w1:tA'}, 'root_pane':{'pane_id':'w1:pB'}}
+        elif 'pane' in argv and 'get' in argv:
+            pane = argv[-1]
+            value = {'pane':{'pane_id':pane,'workspace_id':pane.split(':')[0],
+                             'tab_id':'w1:t1' if pane == 'w1:p1' else pane.split(':')[0]+':tA'}}
+        elif 'list' in argv:
+            value = {'tabs':[], 'workspaces':[]}
         else:
             value = {}
         return {'exit_code':0, 'stdout':json.dumps({'result':value}), 'evidence_path':proof}
@@ -119,11 +123,12 @@ class RunnerTests(unittest.TestCase):
             calls.append(argv)
             return self.fake_execute(argv, **kwargs)
         with patch.object(self.session, 'execute', side_effect=execute):
-            self.session.start('author', self.preflight(), session='fixture', parent_pane='w1:p1')
+            self.session.start('author', self.preflight(), session='fixture', parent_pane='w1:p1',
+                               parent_tab='w1:t1', layout='workspace')
         creation = next(a for a in calls if 'workspace' in a and 'create' in a)
         self.assertIn('--no-focus', creation)
-        self.assertEqual(creation[creation.index('--label')+1], '实现金额汇总')
-        self.assertTrue(any('rename' in a and '实现金额汇总' in a for a in calls))
+        self.assertEqual(creation[creation.index('--label')+1], '实现金额汇总 · omp')
+        self.assertTrue(any('rename' in a and '实现金额汇总 · omp' in a for a in calls))
         record = self.ready()['resources']
         self.assertFalse(record['owns_session'])
         self.assertTrue(record['owns_workspace'])
@@ -222,13 +227,13 @@ class RunnerTests(unittest.TestCase):
             with runner.Runner(self.path):
                 self.fail('second controller obtained runner lock')
 
-    def test_tab_creation_uses_explicit_parent_and_records_tab_ownership(self):
+    def test_default_tab_creation_uses_explicit_parent_and_records_tab_ownership(self):
         calls = []
         def execute(argv, **kwargs):
             calls.append(argv)
             return self.fake_execute(argv, **kwargs)
         with patch.object(self.session,'execute',side_effect=execute):
-            self.session.start('author',self.preflight(),session='fixture',layout='tab',
+            self.session.start('author',self.preflight(),session='fixture',
                                parent_pane='w1:p1',parent_tab='w1:t1')
         creation = next(a for a in calls if 'tab' in a and 'create' in a)
         self.assertEqual(creation[creation.index('--workspace')+1],'w1')
@@ -236,6 +241,64 @@ class RunnerTests(unittest.TestCase):
         resources = self.ready()['resources']
         self.assertTrue(resources['owns_tab'])
         self.assertFalse(resources['owns_workspace'])
+        self.assertFalse(any('focus' in a for a in calls))
+        label = self.session.target('author')['page_label']
+        self.publish('blocked')
+        with patch.object(self.session, 'execute', side_effect=AssertionError('follow must reuse page')):
+            self.session.follow('author', self.spec['targets'][0]['task_packet'], 'Writer yielded')
+        self.assertEqual(self.ready()['resources'], resources)
+        self.assertEqual(self.session.target('author')['page_label'], label)
+        cleanup = self.session.cleanup_plan('author')
+        self.assertEqual([a for a in cleanup['actions'] if 'argv' in a], [{'argv': ['herdr','--session','fixture',
+                                                       'tab','close',resources['tab']]}])
+
+    def test_live_parent_mismatch_cannot_allocate_or_start_agent(self):
+        calls = []
+        def execute(argv, **kwargs):
+            calls.append(argv)
+            result = self.fake_execute(argv, **kwargs)
+            if 'get' in argv:
+                result['stdout'] = json.dumps({'result': {'pane': {
+                    'pane_id':'w1:p1','workspace_id':'w1','tab_id':'w1:t2'}}})
+            return result
+        with patch.object(self.session, 'execute', side_effect=execute), \
+                self.assertRaisesRegex(ValueError, 'membership'):
+            self.session.start('author', self.preflight(), session='fixture',
+                               parent_pane='w1:p1', parent_tab='w1:t1')
+        self.assertFalse(any('create' in a or 'start' in a for a in calls))
+
+    def test_live_title_collision_is_saved_before_allocation(self):
+        def execute(argv, **kwargs):
+            if 'list' in argv:
+                return {'exit_code':0, 'stdout':json.dumps({'result': {'workspaces':[
+                    {'label':'实现金额汇总 · omp'}]}}), 'evidence_path':str(self.proof)}
+            if 'create' in argv:
+                self.assertEqual(protocol.read_json(self.path)['targets']['author']['page_label'],
+                                 '实现金额汇总 · omp · 2')
+            return self.fake_execute(argv, **kwargs)
+        with patch.object(self.session, 'execute', side_effect=execute):
+            result = self.session.start('author', self.preflight(), session='fixture')
+        self.assertEqual(result['page_label'], '实现金额汇总 · omp · 2')
+
+    def test_child_membership_failure_retains_allocation_without_start_or_retry(self):
+        calls = []
+        def execute(argv, **kwargs):
+            calls.append(argv)
+            result = self.fake_execute(argv, **kwargs)
+            if argv[-3:] == ['pane', 'get', 'wZ:pB']:
+                result['stdout'] = json.dumps({'result': {'pane': {
+                    'pane_id':'wZ:pB','workspace_id':'wZ','tab_id':'wZ:tC'}}})
+            return result
+        with patch.object(self.session, 'execute', side_effect=execute):
+            with self.assertRaisesRegex(ValueError, 'membership'):
+                self.session.start('author', self.preflight(), session='fixture')
+            with self.assertRaisesRegex(ValueError, 'reconcile'):
+                self.session.start('author', self.preflight(), session='fixture')
+        saved = protocol.read_json(self.path)['targets']['author']
+        self.assertEqual(saved['phase'], 'start_uncertain')
+        self.assertEqual(saved['allocated_resources']['pane'], 'wZ:pB')
+        self.assertEqual(sum('create' in argv for argv in calls), 1)
+        self.assertFalse(any('start' in argv for argv in calls))
 
     def test_native_profiles_and_hermes_environment_are_not_silently_changed(self):
         target = self.session.target('author')

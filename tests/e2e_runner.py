@@ -16,11 +16,12 @@ import uuid
 
 SCRIPTS = Path(__file__).resolve().parents[1] / 'skills/agent-orchestrator/scripts'
 sys.path.insert(0, str(SCRIPTS))
-import protocol
-import jobs
-import runs
-import watch
-import delivery
+import protocol  # noqa: E402
+import jobs  # noqa: E402
+import runs  # noqa: E402
+import watch  # noqa: E402
+import delivery  # noqa: E402
+import pages  # noqa: E402
 
 require = protocol.require
 KINDS = ('omp', 'codex', 'hermes', 'opencode')
@@ -57,8 +58,7 @@ def initialize(root: str | Path, spec: dict, fixture: bool = False) -> dict:
                 name not in names, 'invalid or duplicate target name')
         names.add(name)
         require(target.get('kind') in KINDS, 'unknown host kind')
-        require(isinstance(target.get('label'), str) and target['label'].strip() and
-                not any(ord(c) < 32 for c in target['label']), 'task label required without controls')
+        pages.page_label(target.get('label'), target['kind'], target.get('opencode_mode'))
         require(target.get('opencode_mode') in (None, 'omo', 'pure') and
                 (target.get('opencode_mode') is None or target['kind'] == 'opencode'), 'invalid host profile')
         seed = Path(target['seed'])
@@ -231,24 +231,22 @@ class Runner(AbstractContextManager):
         return argv, env
 
     def start(self, name: str, preflight: dict, *, transport: str = 'herdr', session: str | None = None,
-              parent_pane: str | None = None, parent_tab: str | None = None, layout: str = 'workspace') -> dict:
+              parent_pane: str | None = None, parent_tab: str | None = None, layout: str = 'auto') -> dict:
         target = self.target(name)
         require(target['phase'] == 'prepared', 'startup may have landed; reconcile instead of starting again')
-        require(transport in ('herdr','tmux') and layout in ('workspace','tab'), 'invalid transport/layout')
+        require(transport in ('herdr','tmux'), 'invalid transport')
         require(transport != 'herdr' or bool(session), 'explicit existing herdr session required')
-        require(layout != 'tab' or (parent_pane and parent_tab), 'tab needs exact parent pane/tab')
-        number = protocol.HERDR_PUBLIC_NUMBER
-        require(parent_pane is None or re.fullmatch(f'w{number}:p{number}',parent_pane), 'exact parent pane required')
-        require(parent_tab is None or (parent_pane is not None and
-                re.fullmatch(f'w{number}:t{number}',parent_tab) and
-                parent_tab.split(':')[0] == parent_pane.split(':')[0]), 'exact matching parent tab required')
+        layout = pages.select_layout(layout, parent_pane, parent_tab)
         require(transport != 'tmux' or (layout == 'workspace' and parent_pane is None and parent_tab is None),
                 'tmux uses independent owned sessions')
         require(transport != 'tmux' or len(os.fsencode(self.root/'tmux.sock')) < 104,
                 'tmux socket path too long; initialize under a shorter test root')
         require(not self.data['fixture'] or transport == 'tmux', 'fixture peers run only through tmux')
         argv, env = self.launch(target, preflight)
+        page_label = pages.page_label(target['label'], target['kind'], target.get('opencode_mode'),
+            [t['page_label'] for t in self.data['targets'].values() if t.get('page_label')])
         target.update(phase='start_uncertain', preflight=self.evidence('preflight',preflight),
+                      page_label=page_label,
                       launch_argv=argv, host_version=preflight['host_version'], transport=transport,
                       start_context={'session':session,'layout':layout,'parent_pane':parent_pane,'parent_tab':parent_tab})
         self.save()
@@ -258,7 +256,7 @@ class Runner(AbstractContextManager):
             socket = str(self.root/'tmux.sock')
             cli = ['tmux','-S',socket,'-f','/dev/null']
             command = cli + ['new-session','-d','-P','-F','#{pane_id}','-s',target['agent'],
-                             '-n',target['label'],'-c',target['cwd']]
+                             '-n',page_label,'-c',target['cwd']]
             for key,value in env.items():
                 command += ['-e',key+'='+value]
             receipt = self.execute(command+argv)
@@ -268,9 +266,12 @@ class Runner(AbstractContextManager):
                          'owns_agent':True,'owns_pane':True,'owns_workspace':False}
         else:
             cli = ['herdr','--session',session]
-            command = cli + (['workspace','create'] if layout == 'workspace' else
-                ['tab','create','--workspace',parent_pane.split(':')[0]])
-            command += ['--cwd',target['cwd'],'--label',target['label'],'--no-focus']
+            page_plan = pages.plan(session, target['cwd'], target['label'], target['kind'],
+                layout=layout, parent_pane=parent_pane, parent_tab=parent_tab,
+                opencode_mode=target.get('opencode_mode'), read=lambda a: self.decoded(self.execute(a)))
+            target.update(page_label=page_plan['label'], page_plan=page_plan)
+            self.save()
+            command = list(page_plan['create_argv'])
             for key,value in env.items():
                 command += ['--env',key+'='+value]
             created = self.decoded(self.execute(command))
@@ -282,8 +283,10 @@ class Runner(AbstractContextManager):
                 'owns_pane':True,'owns_agent':True,'owns_session':False}
             target['allocated_resources'] = resources
             self.save()
+            live = self.decoded(self.execute(cli+['pane','get',pane]))
+            pages.verify_membership(live['pane'], pane, resources['tab'])
             self.record(name, resources)
-            self.decoded(self.execute(cli+['tab','rename',resources['tab'],target['label']]))
+            self.decoded(self.execute(cli+['tab','rename',resources['tab'],target['page_label']]))
             receipt = self.execute(cli+['agent','start',target['agent'],'--kind',target['kind'],
                 '--pane',pane,'--timeout','8000','--',*argv[1:]], timeout=12)
             target['startup_receipt'] = receipt['evidence_path']
@@ -295,7 +298,8 @@ class Runner(AbstractContextManager):
             self.record(name, resources)
         target['phase'] = 'started'
         self.save()
-        return {'target':name,'resources':resources,'input_readiness':'requires fresh controller evidence'}
+        return {'target':name,'resources':resources,'page_label':target['page_label'],
+                'input_readiness':'requires fresh controller evidence'}
 
     def record(self, name: str, resources: dict) -> None:
         defaults = dict(workspace=None,tab=None,parent_pane=None,parent_tab=None,owns_tab=False,
@@ -545,7 +549,7 @@ def main() -> int:
     parser.add_argument('--session',help='existing, explicitly selected herdr session')
     parser.add_argument('--parent-pane')
     parser.add_argument('--parent-tab')
-    parser.add_argument('--layout',choices=('workspace','tab'),default='workspace')
+    parser.add_argument('--layout',choices=('auto','workspace','tab'),default='auto')
     parser.add_argument('--note',help='writer handoff or closure note')
     parser.add_argument('--evidence',help='closure evidence path')
     args = parser.parse_args()

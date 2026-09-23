@@ -21,11 +21,11 @@
 
 ## 页面、名称和工作目录
 
-herdr 中默认每个子任务新建一个 **workspace（space）**，初始 tab 使用任务标题；`--no-focus` 保留调度方当前页面。可以直接指定：
+herdr 中确认父页面后，默认每个子任务在调度方所在 **workspace（space）中新建 tab**；标题包含任务目的和 agent 类型，并使用 `--no-focus` 保留调度方当前页面。无法确认父页面时使用隔离 workspace。可以直接指定：
 
-> 让 Hermes 在新 space 检查上传错误处理，名称“检查上传错误处理”。
+> 让 Hermes 在同 space 新 tab 检查上传错误处理，名称“检查上传错误处理 · Hermes”。
 
-> 让 Codex 在当前 workspace 的新 tab 验证兼容性，名称“验证上传兼容性”。
+> 让 Codex 在当前 workspace 的新 tab 验证兼容性，名称“验证上传兼容性 · Codex”。
 
 > 切到这个子任务的页面，让我看一下过程。
 

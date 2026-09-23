@@ -11,6 +11,7 @@
 | `test_usage_sources.py` | 来源绑定审计回归 | run 历史/漏绑、原生父子关系、四宿主证据边界、轮次/账本 scope 与有效计数核对；无模型调用 |
 | `test_metering.py` | CQ-01 计量检查点回归 | controller/原生子来源、不可变计划、实际 CLI 重导、缺口/未知、失败续采及四宿主计量边界；无模型调用 |
 | `test_round_acceptance.py` | DH-01 按轮验收回归 | 历史查询/补记、切轮时状态、成功验收门槛、blocked/error 续轮、跨轮 attempt 拒绝及关闭后受限验收租约 |
+| `test_pages.py`、`herdr_pages_probe.py` | UX-01 页面验证 | 离线规划/命名回归；探针在独立真实 herdr 会话验证 tab、焦点和清理，显式 `--viewer` 另需 kitty/niri 桌面，不调用模型 |
 | `test_hermes_hooks.py`、`hermes_hook_probe.py` | 可选 Hermes 用量插件验证 | 回归检查重试身份/缺记录/隐私/绑定；probe 通过已安装 Hermes 的真实加载与 hook 路径注入合成响应，不调用模型 |
 | `test_hermes_aux.py`、`hermes_aux_probe.py` | 辅助回执验证 | 去重、缺失计数、未知归属与旧主循环存储；probe 默认合成响应，显式 `--template-home` 才复制既有配置进行标题/审批真实调用；需兼容的原生 hook |
 | `test_hermes_status.py`、`hermes_status_probe.py` | 分层前置诊断 | 能力/配置/插件/历史存储独立判断；probe 在真实宿主解释器做 A→B→A 和兼容矩阵，验证 profile 字节不变，不调用模型 |

@@ -156,7 +156,7 @@ def run_demo(parent: Path) -> dict:
         for name in ('author','verifier'):
             labels[name] = tmux('list-windows','-t','='+state()['targets'][name]['agent'],
                                '-F','#{window_name}').stdout.strip()
-        assert labels == {'author':'实现金额汇总与返修','verifier':'独立验证金额夹具'},labels
+        assert labels == {'author':'实现金额汇总与返修 · omp','verifier':'独立验证金额夹具 · omp'},labels
         submit('author'); submit('verifier')
         # Actual controller-side negative control, while fixture work is outstanding.
         negative = subprocess.run([sys.executable,'-B','-c',oracle],cwd=seed,capture_output=True,text=True)

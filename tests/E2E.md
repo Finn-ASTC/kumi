@@ -77,14 +77,17 @@ Hermes 还需先按[私有存储配方](../skills/agent-hermes/references/isolat
 
 ## 启动、输入与监督
 
-herdr 使用**已存在且显式选定**的 session，runner 不负责启停服务。默认新建任务命名的 workspace/初始 tab，并传 `--no-focus`。在现有 herdr 内操作时提供精确父 ID，禁止 `focused` 等别名：
+herdr 使用**已存在且显式选定**的 session，runner 不负责启停服务。默认 `--layout auto`：完整父 pane/tab 经现场查询确认后，在同 workspace 新建 tab；无父身份时在显式 session 中新建隔离 workspace。标题为“任务 · agent 类型”，重名追加编号，并传 `--no-focus`。父身份不完整或不匹配时拒绝创建。在现有 herdr 内操作时提供精确父 ID，禁止 `focused` 等别名：
 
 ```bash
 python3 tests/e2e_runner.py start --runner "$RUNNER" --target author --input preflight.json \
   --session existing-session --parent-pane w1:p1 --parent-tab w1:t1
-# 若选择新 tab：在上式增加 --layout tab，父 pane/tab 均必填
+# 默认同 space 新 tab；显式新 space 增加 --layout workspace
+# --layout tab 仍可显式指定，父 pane/tab 均必填
 # tmux：改用 --transport tmux，省略 herdr 的 session/parent 参数
 ```
+
+场景的 `label` 仍填写任务目的；实际标题保存在 runner 的 `page_label`，herdr 创建计划另存 `page_plan`，不写入不可变资源身份。相关续轮复用页面和标题；runner 的 `follow` 不自动推断新任务标题或换宿主。明确变更目的时按运行包的 owned-page rename 配方核对并更新显示回执。
 
 tmux 使用 `<lab>/tmux.sock`，每目标独立会话。socket 路径过长时会在分配前拒绝，应换较短的测试父目录。四宿主启动参数按当前配方组合；当前公开回归的范围见[状态与路线](../docs/STATUS.md)；持续响应时效与 start_uncertain 的全宿主故障恢复仍未整体验收。
 
