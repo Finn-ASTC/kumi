@@ -21,6 +21,7 @@
 | `test_startup_recovery.py` | 启动中断回归 | 私有 tmux 真实创建后，在两个持久化边界退出控制器；新控制器恢复原 pane/PID，不重启、不提前提交 |
 | `test_permission_detection.py`、`fixtures/permission-screens.json` | 权限误报回归 | 脱敏界面形状、正文/历史误报、部分提示和未知 UI 复核；真实 tmux 连续权限流程另在 `test_tmux_integration.py` |
 | `test_reporting_recipe.py`、`test_wait_output.py`、`test_supervision_checkpoint.py` | B2 发布、日志等待与接续回归 | stdin 精确发布、日志游标/文件边界、提前续接预算；[B2 验证记录](../docs/B2-SUPERVISION.md)另列独立应用及短原生实验，30 秒时效仍未通过 |
+| `test_supervision_audit.py` | B3 历史时效审计 | 四宿主/五配置同一口径，缺证据/重开/关联不转移、坏时钟、并发、分页与最小运行包 CLI；不测实际审批速度 |
 | `test_verifier_acceptance.py` | 验证轮验收示例回归 | 实际执行运行文档中的计划：拒收永远返回通过的 oracle，拒绝借用作者 attempt；验证者通过后仍须独立宿主收尾 |
 | `check_skill_package.py` | 分发包引用检查 | CI 执行；检查本地链接与已知散文引用模式，不调用模型，不安装给 agent |
 | `e2e_runner.py` | 当前可复用 E2E 测试入口 | 显式场景与步骤，串联正式工具；native start 可以实际启动模型宿主 |

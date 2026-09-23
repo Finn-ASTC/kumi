@@ -7,6 +7,8 @@
 | 并行、权限、恢复、取消和交付 | [使用指南](../USAGE.md) |
 | 能力边界、既有事项编号和后续优先级 | [状态与路线](STATUS.md) |
 | 接下来逐批做什么、消息实验分支及每批完成条件 | [综合实施计划](IMPLEMENTATION-PLAN.md#下一阶段执行队列) |
+| 主线收口顺序与独立消息实验边界 | [主线执行队列](IMPLEMENTATION-PLAN.md#2026-09-24-主线收口与实验分支分开推进) |
+| 审批发现、复核记账与解决证据的时效复盘 | [B3 监督时效审计](B3-SUPERVISION-AUDIT.md) |
 | 实际宿主版本、接口验证及升级跟进项 | [宿主兼容审计](HOST-COMPATIBILITY-20260923.md) |
 | Jev/Laya/Von/Foq 等决策后端的候选与评测门槛 | [审批后端选型](APPROVAL-MODEL-SELECTION.md) |
 | 计量计划、阶段采集、缺口与重复导入验证 | [CQ-01 最小计量闭环](CQ1-METERING.md) |

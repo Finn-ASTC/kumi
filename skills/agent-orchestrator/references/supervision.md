@@ -342,3 +342,63 @@ Completed target event files/health are published while other reads remain in fl
 At most eight reads run concurrently; a sweep still waits for its reads before the
 next sweep. These fields expose transport delay, not a guarantee of model wake-up
 or approval responsiveness. Legacy records retain their old timestamp semantics.
+
+## Audit retained response timing
+
+For retrospective timing, use [supervision_audit.py](../scripts/supervision_audit.py):
+
+```bash
+python3 "$ORCH_SCRIPTS/supervision_audit.py" --run "$RUN_FILE" \
+  --review-target-seconds 30 --limit 20 --offset 0
+```
+
+This reads all registered watches, including handled events and historical rounds.
+It does not inspect terminals, change review state, wake models or authorize input.
+Run it at a phase boundary or during diagnosis; it scans full retained history and
+is not a replacement for the lightweight work checkpoint. `--limit`/`--offset`
+page records; counts and nearest-rank p50/p95/max cover all readable attention
+records, not just the displayed page. Recompute pages after any history changes.
+
+| Field | Meaning |
+|---|---|
+| `detection_to_first_review_seconds` | Event observation → first review receipt's recording time, including an explicit `open` receipt |
+| `detection_to_action_evidence_record_seconds` | Observation → first receipt referencing currently hash-verified action evidence; **not the actual input/action time** |
+| `detection_to_latest_resolution_seconds` | Observation → latest receipt's declared `resolved_at`, only when its evidence bytes still match |
+| `declared_waiting_user_seconds` | Sum of intervals recorded as waiting_user, through the next receipt or audit time; not measured human thinking time |
+| `handled_without_resolution` | Handled records without currently supported resolution evidence; not proof the native operation remains blocked |
+
+Missing endpoints stay null and are excluded from that endpoint's percentile
+sample count. A later `open`, waiting_user or handled-without-resolution receipt
+does not inherit an earlier resolution. History still records the earlier claim.
+Wait time is reported separately and is **not subtracted** to make a slow response
+appear fast. Clock reversals/future times, gaps, known corruption and changed or
+missing referenced evidence make the report incomplete instead of clamping to zero.
+
+`review_recording_verdict` is `within_target`, `missed`, `pending`, `no_samples` or
+`incomplete`. Only `within_target` exits 0; complete missed/pending/no-sample reports
+exit 1; incomplete data or invalid arguments exit 2. Missing/broken watches remain
+errors even if another watch's rows are readable. An empty report never passes.
+
+These are **attention event records, not unique approvals**. Reappearing dialogs
+and replacement watches stay separate; matching correlation keys do not merge
+incidents or transfer a review. Legacy captures without hashes are explicitly
+`legacy_unpinned`. Captured text, review notes and action evidence contents are not
+included in the report. Output still contains run/job/round/watch identities and
+local watch paths; sanitize it before sharing.
+
+A successful exit confirms only recorded first-review timing against the requested
+threshold. It does not validate native action timing, resolution semantics, correct
+approval decisions or the 30-second approval-response SLA. The tool always returns
+`approval_response_sla_verified=false`; dialog onset and actual action timestamps
+stay unknown. Inspect exact control/transport receipts for those facts rather than
+parsing arbitrary evidence text or inferring them from a `handled` flag.
+
+The audit is a retrospective snapshot, not a transactional run-wide read or an OS
+integrity boundary. Detected concurrent changes require a retry; it cannot detect
+all coordinated same-user rewrites or recover deleted historical observations.
+Review chains have no independent head watermark: deletion of a contiguous tail,
+including a later reopening receipt, can leave an older resolution as the latest
+retained state. Such loss cannot be discovered from these files alone. The report
+therefore also returns `history_completeness_verified=false`.
+`complete` means the retained readable inventory passed these checks, not that the
+observer saw every real dialog or that measurement coverage was continuous.
