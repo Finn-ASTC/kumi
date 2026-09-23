@@ -8,7 +8,7 @@
 
 最小控制实验基础属于开发侧，不进入运行 skills。它复用 E2E runner，但额外固定 seed 与
 实验资源、在启动前登记计量计划，并要求提交前绑定精确 native 身份。可在独立目录运行
-合成双格式/恢复演练：
+四类宿主/五配置的合成来源与恢复演练：
 
 ```bash
 ORCH_TEST_ROOT="$(mktemp -d /tmp/orch-controls.XXXXXX)"
@@ -25,6 +25,16 @@ native start 仍沿用 runner 的显式流程。先 `pin` 当前 job/round/resou
 registry 合作式协调，不强制别的进程遵守；异常退出不自动释放，手动释放要核对写入者、
 端口和数据库状态并带证据。此工具只记观察，不发通知/中断/取消。
 
+四类宿主在 init、pin、collect、observe、release 上使用相同契约，OpenCode 的 OMO/pure
+分别计覆盖。`report.host_matrix` 始终包含四宿主/五配置；没有选入本次实验显示
+`not_selected` 和 `not_tested`，不是“不支持”。每个目标另有带 host version/UI mode/fixture
+标识的 observations；状态列表不等于跨版本的能力保证。
+
+`--fixture` 下四类标签都实际启动相同的确定性 Python peer，不查找宿主程序、不需要原生
+profile。native 模式仍核对各适配器真实条件，例如 Hermes 自有 profile 和维护配置；标签
+齐平不会绕过这些条件。演练包含五条合成 sample，重导仍为五条；Hermes 使用可选主循环
+recorder 的合成 SQLite，原版累计快照不能伪装成逐轮 delta，辅助来源缺口仍保留。
+
 recipe 的 JSON 形状如下；`scenario` 使用下节完整 E2E 场景，不另造 task/result 协议。
 将说明占位值换成实际对象和路径；资源声明只预留，不启动服务、不检查外部进程是否占端口。
 所有协作实验使用同一个已有 registry 目录。
@@ -33,7 +43,7 @@ recipe 的 JSON 形状如下；`scenario` 使用下节完整 E2E 场景，不另
 {
   "version": 1,
   "input_version": "cancel-and-notice-v1",
-  "scenario": "替换成下节完整 scenario 对象，目标 kind 先限 codex/omp",
+  "scenario": "替换成下节完整 scenario 对象，kind 支持 codex/omp/hermes/opencode",
   "resources": [
     {"kind":"path", "owner":"author", "path":"/absolute/build-area", "purpose":"build"},
     {"kind":"path", "owner":"author", "path":"/absolute/test.db", "purpose":"database"},

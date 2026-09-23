@@ -25,8 +25,8 @@
 | `check_skill_package.py` | 分发包引用检查 | CI 执行；检查本地链接与已知散文引用模式，不调用模型，不安装给 agent |
 | `e2e_runner.py` | 当前可复用 E2E 测试入口 | 显式场景与步骤，串联正式工具；native start 可以实际启动模型宿主 |
 | `control_lab.py`、`lab_resources.py` | 最小共同控制实验入口与合作式资源声明/冲突检查 | 固定 seed、计量先登记、精确 native identity、拒绝/停止/通知证据分类和续采；开发/测试专用，不发送终端输入、不构成 OS 级隔离 |
-| `test_control_lab.py` | 实验配方、原生身份、资源并发和故障恢复回归 | 无模型；覆盖两进程冲突、初始化/释放中断、证据损坏、通知不能替代停止 |
-| `control_lab_demo.py` | 可保留的合成共同基础演练 | 在独立 `--root` 使用两种合成宿主日志格式验证计量和续采；不启动 CLI agent，不代表原生控制能力通过 |
+| `test_control_lab.py`、`test_control_lab_integration.py` | 四宿主/五配置共用契约、原生身份、资源并发和恢复回归 | 无模型；真实 tmux 用例验证五配置的确定性目标启动/身份/退出，另测两进程冲突、初始化/释放中断、证据损坏、通知不能替代停止 |
+| `control_lab_demo.py`、`control_usage_fixtures.py` | 可保留的四宿主共同基础演练与合成来源 | 在独立 `--root` 使用 Codex/omp JSONL、OpenCode SQLite（OMO/pure 各一会话）、Hermes 合成 hook SQLite 验证计量和续采；不启动原生 agent，不代表原生控制能力通过 |
 | `e2e_demo.py` | 无模型的小项目演练 | 调用 runner，使用真实 tmux 和确定性程序，保留实验目录 |
 | `delivery_config_demo.py` | 交付配置负对照与返工演练 | 真实 Rust debug/release、产物检查与完成门禁；不启动终端或模型，需 Linux /proc、Cargo/Rust/rustfmt/clippy |
 | `E2E.md` | runner 操作说明 | 场景、预检、提交、监督、恢复和验收步骤 |

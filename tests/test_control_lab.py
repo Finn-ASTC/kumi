@@ -297,12 +297,20 @@ class ControlLabTests(unittest.TestCase):
         lab.release(self.path, payload)
         self.assertEqual(lab.report(self.path)["phase"], "released")
 
-    def test_two_format_cli_demo_imports_and_resumes_without_native_claims(self):
+    def test_all_host_cli_demo_imports_and_resumes_without_native_claims(self):
         result = control_lab_demo.run(self.root)
         self.assertTrue(result["passed"])
-        self.assertEqual(result["synthetic_imported_samples"], 2)
-        self.assertEqual(result["resumed_duplicates"], 2)
+        self.assertEqual(result["synthetic_imported_samples"], 5)
+        self.assertEqual(result["resumed_duplicates"], 5)
         self.assertEqual(result["native_capabilities"], "not_tested")
+        self.assertEqual({row["host"] for row in result["host_matrix"]}, set(e2e_runner.KINDS))
+        self.assertTrue(all(row["selection"] == "selected" for row in result["host_matrix"]))
+        checkpoint = protocol.read_json(result["metering_report"])
+        self.assertTrue(checkpoint["collection_complete"])
+        self.assertFalse(checkpoint["binding_coverage_complete"])
+        self.assertIsNone(checkpoint["usage"]["totals"]["input_tokens"])
+        self.assertEqual(checkpoint["usage"]["known_subtotals"]["input_tokens"], 500)
+        self.assertTrue(checkpoint["source_gaps"], "limited source coverage must remain visible")
 
     def test_release_needs_checks_and_stop_not_just_a_notice(self):
         self.pin()
@@ -331,11 +339,121 @@ class ControlLabTests(unittest.TestCase):
         self.assertTrue(report["fixture"])
         self.assertFalse(report["metering"]["binding_coverage_complete"])
 
-    def test_unknown_hosts_and_conflicts_rejected(self):
+    def test_unknown_hosts_rejected_before_allocating(self):
         spec = copy.deepcopy(self.spec)
-        spec["scenario"]["targets"][0]["kind"] = "hermes"
-        with self.assertRaisesRegex(ValueError, "Codex and omp"):
+        spec["scenario"]["targets"][0]["kind"] = "unknown-host"
+        before = set(self.root.iterdir())
+        with self.assertRaisesRegex(ValueError, "unknown host"):
             lab.initialize(self.root, self.registry, spec)
+        self.assertEqual(set(self.root.iterdir()), before)
+
+    def profiles(self):
+        for host in e2e_runner.KINDS:
+            for mode in (("omo", "pure") if host == "opencode" else (None,)):
+                yield host, mode
+
+    def select_profile(self, host, mode, fixture=True):
+        spec = copy.deepcopy(self.spec)
+        target = spec["scenario"]["targets"][0]
+        target["kind"] = host
+        if mode is not None:
+            target["opencode_mode"] = mode
+        info = lab.initialize(self.root, self.registry, spec, fixture=fixture)
+        self.path, self.runner = Path(info["experiment_path"]), info["runner_path"]
+
+    def test_all_hosts_share_identity_control_checks_and_distinct_profiles(self):
+        for host, mode in self.profiles():
+            with self.subTest(host=host, mode=mode):
+                self.select_profile(host, mode)
+                identity = self.started()
+                with e2e_runner.Runner(self.runner) as controller, patch.object(controller, "execute") as execute:
+                    with self.assertRaisesRegex(ValueError, "identity missing"):
+                        controller.submit("author", {})
+                    execute.assert_not_called()
+                payload = {"identity": identity, "evidence_path": str(self.proof), "note": "Synthetic exact binding"}
+                lab.pin(self.path, "author", payload)
+                with e2e_runner.Runner(self.runner) as controller:
+                    lab.preflight(controller, "author", submitting=True)
+                for kind in lab.CAPABILITIES:
+                    observation = self.observation(kind)
+                    if kind == "deny":
+                        observation["checks"] = dict(operation_denied=True, scope_unchanged=True)
+                    if kind == "stop":
+                        observation["checks"] = {key: "clear" for key in controls.STOP_CHECKS}
+                    observation["checks"].pop(next(iter(observation["checks"])))
+                    with self.assertRaises(ValueError):
+                        lab.observe(self.path, "author", observation)
+                    observation = self.observation(kind)
+                    if kind == "deny":
+                        observation["checks"] = dict(operation_denied=True, scope_unchanged=True)
+                    if kind == "stop":
+                        observation["checks"] = {key: "clear" for key in controls.STOP_CHECKS}
+                    result = lab.observe(self.path, "author", observation)
+                    self.assertFalse(result["authorizes_input"])
+                report = lab.report(self.path)
+                row = report["targets"][0]
+                self.assertEqual((row["host"], row["profile"]), (host, mode or "default"))
+                self.assertEqual(row["capabilities"], {kind: ["observed"] for kind in lab.CAPABILITIES})
+                self.assertTrue(all(record["fixture"] for record in row["observations"]))
+                with e2e_runner.Runner(self.runner) as controller:
+                    job = jobs.load(Path(controller.data["index_path"]), controller.target("author")["job_id"])
+                    with self.assertRaisesRegex(ValueError, "confirmed stop"):
+                        controls.cancellation(job, 0)
+                    controller.mutate("author", "update", {"native": {"session_id": "replacement", "turn_id": None}})
+                    with self.assertRaisesRegex(ValueError, "identity missing or changed"):
+                        lab.preflight(controller, "author", submitting=True)
+
+    def test_all_fixture_hosts_launch_without_native_binaries_or_profiles(self):
+        payload = {"host_version": "fixture-only", "evidence_path": str(self.proof), "note": "Fixture preflight",
+                   "checks": {"model_and_approvals_preserved": True, "runtime_dependencies_verified": True}}
+        for host, mode in self.profiles():
+            with self.subTest(host=host, mode=mode):
+                self.select_profile(host, mode)
+                with e2e_runner.Runner(self.runner) as controller:
+                    with patch.object(e2e_runner.shutil, "which", side_effect=AssertionError("native lookup")):
+                        with patch.object(controller, "execute", side_effect=AssertionError("native command")):
+                            argv, env = controller.launch(controller.target("author"), payload)
+                    self.assertEqual(argv, [sys.executable, str(Path(e2e_runner.__file__).parent / "fixtures/e2e_peer.py"),
+                                            str(controller.path), "author"])
+                    self.assertEqual(env, {})
+
+    def test_all_hosts_native_initialization_keeps_capabilities_unverified(self):
+        for host, mode in self.profiles():
+            with self.subTest(host=host, mode=mode):
+                self.select_profile(host, mode, fixture=False)
+                report = lab.report(self.path)
+                self.assertFalse(report["fixture"])
+                self.assertEqual(report["targets"][0]["capabilities"], {kind: ["not_tested"] for kind in lab.CAPABILITIES})
+
+    def test_fixture_support_does_not_bypass_real_hermes_preflight(self):
+        self.select_profile("hermes", None, fixture=False)
+        payload = {"host_version": "fixture-only", "evidence_path": str(self.proof), "note": "Incomplete",
+                   "checks": {"model_and_approvals_preserved": True, "runtime_dependencies_verified": True}}
+        with e2e_runner.Runner(self.runner) as controller:
+            with self.assertRaisesRegex(ValueError, "preflight is incomplete"):
+                controller.launch(controller.target("author"), payload)
+
+    def test_unselected_hosts_visible_as_not_tested_not_unsupported(self):
+        matrix = lab.report(self.path)["host_matrix"]
+        self.assertEqual(len(matrix), 5)
+        self.assertEqual({row["host"] for row in matrix}, set(e2e_runner.KINDS))
+        for row in matrix:
+            self.assertEqual(row["selection"], "selected" if row["host"] == "codex" else "not_selected")
+            self.assertEqual(row["capabilities"], {kind: ["not_tested"] for kind in lab.CAPABILITIES})
+
+    def test_changed_host_or_implicit_profile_rejected_for_observation_and_report(self):
+        for host, mode, change in (("codex", None, {"kind": "hermes"}),
+                                   ("opencode", None, {"opencode_mode": "pure"})):
+            with self.subTest(host=host):
+                self.select_profile(host, mode)
+                self.pin()
+                with e2e_runner.Runner(self.runner) as controller:
+                    controller.target("author").update(change)
+                    controller.save()
+                with self.assertRaisesRegex(ValueError, "differs from recipe"):
+                    lab.report(self.path)
+                with self.assertRaisesRegex(ValueError, "differs from recipe"):
+                    lab.observe(self.path, "author", self.observation())
 
 
 if __name__ == "__main__":

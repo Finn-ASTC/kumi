@@ -24,6 +24,23 @@ CAPABILITIES = ("deny", "stop", "notice_idle", "notice_interrupt")
 require = protocol.require
 
 
+def host_profile(target: dict[str, Any]) -> str:
+    """Keep host-specific modes visible without granting any host extra authority."""
+    require(target.get("kind") in e2e_runner.KINDS, "unknown host kind")
+    mode = target.get("opencode_mode")
+    require(mode in (None, "omo", "pure") and (mode is None or target["kind"] == "opencode"),
+            "invalid host profile")
+    return (mode or "omo") if target["kind"] == "opencode" else "default"
+
+
+def check_target(target: dict[str, Any], recipe: dict[str, Any]) -> dict[str, Any]:
+    """Do not attribute evidence to a different host/profile after initialization."""
+    expected = next((t for t in recipe["spec"]["scenario"]["targets"] if t["name"] == target["name"]), None)
+    require(expected is not None and all(target.get(key) == value for key, value in expected.items())
+            and host_profile(target) == host_profile(expected), "runner target differs from recipe")
+    return expected
+
+
 def seed_records(scenario: dict[str, Any]) -> dict[str, Any]:
     """Pin full input trees; task packets and verification plans live in the recipe."""
     records = {}
@@ -51,8 +68,9 @@ def initialize(parent: Path, registry: Path, spec: dict[str, Any], fixture: bool
     scenario = spec["scenario"]
     require(isinstance(scenario, dict) and isinstance(scenario.get("targets"), list)
             and bool(scenario["targets"]), "scenario targets required")
-    require(all(target.get("kind") in ("codex", "omp") for target in scenario["targets"]),
-            "first control lab supports Codex and omp only")
+    for target in scenario["targets"]:
+        require(isinstance(target, dict), "target must be an object")
+        host_profile(target)
     owners = {target["name"] for target in scenario["targets"]}
     resources = lab_resources.validate(spec["resources"])
     require(all(item["owner"] in owners for item in resources), "unknown resource owner")
@@ -131,8 +149,7 @@ def preflight(controller: e2e_runner.Runner, name: str, *, submitting: bool = Fa
     lab_resources.check(state["registry"], state["experiment_id"], str(path), state["resources"])
     require(seed_records(recipe["spec"]["scenario"]) == recipe["seeds"], "fixed experiment inputs changed")
     target = controller.target(name)
-    expected = next(t for t in recipe["spec"]["scenario"]["targets"] if t["name"] == name)
-    require(all(target[key] == value for key, value in expected.items()), "runner target differs from recipe")
+    check_target(target, recipe)
     require(bool(state["plans"]) and bool(state["checkpoints"]), "prelaunch metering missing")
     first = protocol.read_json(state["checkpoints"][0])
     require(first["run_path"] == controller.data["run_path"] and first["label"] == "before-launch",
@@ -203,9 +220,10 @@ def observe(path: str | Path, name: str, payload: dict[str, Any]) -> dict[str, A
     jobs.require_text(payload["ui_mode"], "observed UI mode")
     require(isinstance(payload["checks"], dict), "checks must be an object")
     with e2e_runner.Runner(state["runner_path"]) as controller:
-        path, state, _ = load(path)
+        path, state, recipe = load(path)
         require(state["phase"] == "ready", "experiment not ready")
         target = controller.target(name)
+        check_target(target, recipe)
         actual = controls.identity(jobs.load(Path(controller.data["index_path"]), target["job_id"]))
         require(name in state["identities"] and payload["identity"] == actual, "observation identity changed")
         binding = state["identities"][name]
@@ -230,6 +248,7 @@ def observe(path: str | Path, name: str, payload: dict[str, Any]) -> dict[str, A
                 require(set(checks) == keys and all(checks[k] is True for k in keys - {"background"})
                         and checks["background"] in ("running", "clear"), "notice needs separate interactivity evidence")
         record = {"version": 1, "target": name, "host": target["kind"],
+                  "profile": host_profile(target),
                   "host_version": target.get("host_version"), "fixture": state["fixture"],
                   "recorded_at": protocol.utc_now(), "observation": payload, "evidence": jobs.evidence(payload),
                   "authorizes_input": False}
@@ -241,25 +260,47 @@ def observe(path: str | Path, name: str, payload: dict[str, Any]) -> dict[str, A
 
 def report(path: str | Path) -> dict[str, Any]:
     """Show gaps explicitly; observation history never certifies a whole host."""
-    path, state, _ = load(path)
+    path, state, recipe = load(path)
     rows = []
     runner = protocol.read_json(state["runner_path"]) if state["runner_path"] else None
     for name, target in (runner["targets"].items() if runner else []):
+        check_target(target, recipe)
         observations = []
         for filename in state["observations"]:
             record = protocol.read_json(filename)
             if record["target"] == name:
+                require(record["host"] == target["kind"]
+                        and record.get("profile", host_profile(target)) == host_profile(target),
+                        "observation host/profile changed")
                 proof = record["evidence"]
                 require(jobs.fingerprint(Path(proof["path"])) == proof["sha256"], "observation evidence changed")
                 observations.append(record)
         rows.append({"target": name, "host": target["kind"], "host_version": target.get("host_version"),
+                     "profile": host_profile(target),
                      "identity_pinned": name in state["identities"],
+                     "observations": [{"capability": r["observation"]["capability"],
+                                       "scenario": r["observation"]["scenario"],
+                                       "ui_mode": r["observation"]["ui_mode"],
+                                       "host_version": r["host_version"],
+                                       "status": r["observation"]["status"],
+                                       "fixture": r["fixture"], "evidence": r["evidence"]}
+                                      for r in observations],
                      "capabilities": {kind: [r["observation"]["status"] for r in observations
                                               if r["observation"]["capability"] == kind] or ["not_tested"]
                                       for kind in CAPABILITIES}})
+    matrix = []
+    for host in sorted(e2e_runner.KINDS):
+        for profile in (("omo", "pure") if host == "opencode" else ("default",)):
+            selected = [row for row in rows if (row["host"], row["profile"]) == (host, profile)]
+            matrix.append({"host": host, "profile": profile,
+                           "selection": "selected" if selected else "not_selected",
+                           "targets": [row["target"] for row in selected],
+                           "capabilities": {kind: [status for row in selected for status in row["capabilities"][kind]]
+                                              or ["not_tested"] for kind in CAPABILITIES}})
     return {"experiment_path": str(path), "phase": state["phase"], "fixture": state["fixture"],
             "error": state.get("error"),
             "runner_path": state["runner_path"], "targets": rows,
+            "host_matrix": matrix,
             "metering": protocol.read_json(state["checkpoints"][-1]) if state["checkpoints"] else None,
             "resources": lab_resources.read(lab_resources.directory(state["registry"]))["claims"].get(state["experiment_id"]),
             "note": "Development evidence only. Unknown coverage is not zero cost; fixtures are not native certification."}

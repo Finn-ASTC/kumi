@@ -193,7 +193,7 @@ class Runner(AbstractContextManager):
     def launch(self, target: dict, preflight: dict) -> tuple[list[str], dict]:
         """Use known host profiles; host preflight is caller evidence, not inferred approval."""
         required = {'model_and_approvals_preserved', 'runtime_dependencies_verified'}
-        if target['kind'] == 'hermes':
+        if target['kind'] == 'hermes' and not self.data['fixture']:
             required |= {'private_home_verified', 'automatic_maintenance_disabled'}
         require(set(preflight) <= {'host_version','evidence_path','note','checks','hermes_home','scanner_sha256'},
                 'unknown preflight fields')
@@ -203,7 +203,6 @@ class Runner(AbstractContextManager):
         jobs.evidence(preflight)
         kind = target['kind']
         if self.data['fixture']:
-            require(kind != 'hermes', 'fixture launch uses omp metadata, never real Hermes')
             return [sys.executable, str(Path(__file__).parent/'fixtures/e2e_peer.py'),
                     str(self.path), target['name']], {}
         executable = shutil.which(kind)
