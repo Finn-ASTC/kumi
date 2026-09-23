@@ -10,6 +10,7 @@
 | `test_recovery_delta.py`、`recovery_benchmark.py` | C2 增量恢复回归与规模测量 | 续读/缓存失效、丢失输出、分页积压与断点；benchmark 在独立父目录保留无模型夹具，支持 `--skills-root`；[验证记录](../docs/C2-RECOVERY.md) |
 | `test_usage_sources.py` | 来源绑定审计回归 | run 历史/漏绑、原生父子关系、四宿主证据边界、轮次/账本 scope 与有效计数核对；无模型调用 |
 | `test_metering.py` | CQ-01 计量检查点回归 | controller/原生子来源、不可变计划、实际 CLI 重导、缺口/未知、失败续采及四宿主计量边界；无模型调用 |
+| `test_controls.py`、`control_fixtures.py` | DH-02/03 控制关联回归 | 事件证据指纹、精确控制意图/确认、接管、旧轮/旧停止拒绝、原事件 review 和取消门槛；真实 tmux 另覆盖模拟拒绝与无结果取消 |
 | `test_round_acceptance.py` | DH-01 按轮验收回归 | 历史查询/补记、切轮时状态、成功验收门槛、blocked/error 续轮、跨轮 attempt 拒绝及关闭后受限验收租约 |
 | `test_pages.py`、`herdr_pages_probe.py` | UX-01 页面验证 | 离线规划/命名回归；探针在独立真实 herdr 会话验证 tab、焦点和清理，显式 `--viewer` 另需 kitty/niri 桌面，不调用模型 |
 | `test_hermes_hooks.py`、`hermes_hook_probe.py` | 可选 Hermes 用量插件验证 | 回归检查重试身份/缺记录/隐私/绑定；probe 通过已安装 Hermes 的真实加载与 hook 路径注入合成响应，不调用模型 |

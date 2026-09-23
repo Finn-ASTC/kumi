@@ -96,6 +96,78 @@ class TmuxIntegrationTests(unittest.TestCase):
         self.assertEqual(len(self.received.read_text().splitlines()), 1)
         self.assertFalse(marker.exists())
 
+    def test_exact_denial_then_no_result_cancellation_preserves_sentinel(self):
+        import controls
+        import reviews
+        info = self.prepare('PAUSE: bounded control fixture')
+        index = self.root / 'control-index'
+        state = jobs.register(index, info['request_path'])
+        state = jobs.claim(index, info['job_id'], state['revision'], 'fixture-controller', 60)
+        token = state['lease']['token']
+        def change(action, payload):
+            input_file = self.root / ('control-' + action + '.json')
+            input_file.write_text(json.dumps(payload))
+            argv = [sys.executable, str(TOOL.parent / 'jobs.py'), action,
+                    '--index', str(index), '--job', info['job_id'],
+                    '--expect-revision', str(state['revision']), '--token', token]
+            if action != 'begin':
+                argv += ['--input', str(input_file)]
+            output = subprocess.run(argv, capture_output=True, text=True, timeout=10)
+            self.assertEqual(output.returncode, 0, output.stderr)
+            return json.loads(output.stdout)
+        handle = watch.init_watch([info['request_path']], self.root)['watch_path']
+        state = change('begin', {})
+        self.tmux('load-buffer', '-b', info['round_id'], info['prompt_path'])
+        self.tmux('paste-buffer', '-d', '-b', info['round_id'], '-t', self.pane)
+        self.tmux('send-keys', '-t', self.pane, 'Enter')
+        def screen():
+            return self.tmux('capture-pane', '-p', '-t', self.pane).stdout
+        self.wait_for(lambda: 'Allow once / Deny' in screen(), 'fixture approval missing')
+        event = next(e for e in watch.poll_watch(handle)['events'] if e['kind'] == 'attention')
+        proof = self.root / 'control-decision.json'
+        proof.write_text('{"scope":"deny only our deterministic peer operation"}')
+        inspected = controls.inspect(index, info['job_id'], watch_path=handle, seq=event['seq'])
+        state = change('control-begin', {
+            'kind':'deny', 'inspection_path':inspected['inspection_path'],
+            'method':{'kind':'keys','description':'Literal DENY + Enter, deterministic peer only'},
+            'evidence_path':str(proof),'note':'Fixture operation denial'})
+        self.assertEqual(state['control']['status'], 'uncertain')
+        self.tmux('send-keys', '-t', self.pane, '-l', '--', 'DENY')
+        self.tmux('send-keys', '-t', self.pane, 'Enter')
+        self.wait_for(lambda: 'Fixture operation denied' in screen(), 'fixture denial missing')
+        denied = self.root / 'denied.json'
+        denied.write_text(json.dumps({'screen':screen(),'observed_at':time.time()}))
+        state = change('control-receipt', {
+            'control_id':state['control']['control_id'],'status':'confirmed','outcome':'denied',
+            'observed_at':time.time(),'checks':{'operation':'clear','scope':'clear'},
+            'evidence_path':str(denied),'note':'Read peer-specific denial marker and no result'})
+        controls.review(index, info['job_id'], state['control']['control_id'], 0, 'Fixture denial confirmed')
+        self.assertEqual(reviews.review_status(handle, event['seq'])['review']['status'], 'handled')
+        self.assertFalse(Path(info['result_path']).exists())
+
+        inspected = controls.inspect(index, info['job_id'])
+        state = change('control-begin', {
+            'kind':'cancel','inspection_path':inspected['inspection_path'],
+            'method':{'kind':'keys','description':'Fixture idle /exit + Enter'},
+            'evidence_path':str(proof),'note':'Cancel owned fixture after denial'})
+        self.tmux('send-keys', '-t', self.pane, '-l', '--', '/exit')
+        self.tmux('send-keys', '-t', self.pane, 'Enter')
+        self.wait_for(lambda: self.tmux('has-session','-t','=child',check=False).returncode != 0,
+                      'fixture did not exit')
+        stopped = self.root / 'stopped.json'
+        stopped.write_text(json.dumps({'child_exited':True,'sentinel_alive':True,
+                                      'model_or_background_children':0,'result_exists':False}))
+        state = change('control-receipt', {
+            'control_id':state['control']['control_id'],'status':'confirmed','outcome':'stopped',
+            'observed_at':time.time(),'checks':{k:'clear' for k in controls.STOP_CHECKS},
+            'evidence_path':str(stopped),'note':'Owned peer exited; fixture never spawns children or tools'})
+        state = change('close', {
+            'outcome':'cancelled','evidence_path':str(stopped),'note':'Stopped with no invented result'})
+        self.assertEqual(state['closed']['stop_status'], 'confirmed')
+        self.assertEqual(state['submission'], 'uncertain')
+        self.assertFalse(Path(info['result_path']).exists())
+        self.assertEqual(self.tmux('has-session','-t','=sentinel',check=False).returncode, 0)
+
     def test_publication_rewrite_survives_real_terminal_exit_and_watch_restart(self):
         info = self.prepare('Known original response')
         response = self.exchange(info)

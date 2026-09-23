@@ -91,6 +91,11 @@ If repair is exhausted, inspect screen evidence and independently verify any art
 
 ## Deadlines and cancellation
 
+Use [exact intervention receipts](controls.md) for deny/interrupt/cancel. An
+allocated job now needs fresh scoped stop confirmation before `close cancelled`;
+no-result cancellation does not fabricate a child response. Intent, actual input,
+verified stop and final closure are distinct steps under the current job lease.
+
 Historical timing examples: trivial report ≈12 s; small project ≈150 s; multi-round Rust work ≈11 min. Use these as planning data, not promises. Start with 5 min per round and 30 min total; adjust deadlines to task size and user constraints. Keep the supervision cadence above even for long jobs. Use bounded calls and periodic progress updates. A pending approval does not automatically pause the job deadline.
 
 - A client wait timing out does not terminate the task. Inspect state, output and result. Extend deliberately if useful work is progressing, or initiate cancellation; record the choice.

@@ -155,4 +155,9 @@ python3 tests/e2e_runner.py watch-init --runner "$RUNNER"
 
 runner 的 flock 和 jobs 租约只约束合作控制器，不阻止绕过协议的外部终端输入。默认租约 3600 秒；长任务到期前通过 jobs 的 `renew` 接口续期（当前 revision/token，payload 为 `{"lease_seconds":3600}`）。只有过期且前任已停时才 claim。
 
+拒绝/停止与无结果取消按运行包[控制回执](../skills/agent-orchestrator/references/controls.md)操作。
+`control-begin`、`control-receipt` 使用当前 job 租约，不会执行按键；CLI 输出保留新 revision
+和 control ID。确认结果后通过 `controls.py review` 仅更新原事件。runner 当前不封装控制
+执行器；这些动作通过正式 helper 进行，不用通用 Esc 脚本代替宿主核验。
+
 步骤不是跨文件/终端的事务：candidate 保存前崩溃仍可能留下未激活目录，可从 run inventory 找到；验证完成但记账中断也应检查独立 attempt 后协调恢复。不要因一条命令失败就从 start/submit 重跑整条流程。此入口先固化可审查步骤，自动调度、原生身份发现、用量导入和长时四宿主验证留给后续工作。

@@ -54,6 +54,10 @@ herdr 中确认父页面后，默认每个子任务在调度方所在 **workspac
 
 处理原生弹窗后继续当前轮业务，不重新发送任务。将事件记为 handled 不会批准宿主弹窗；推进读取游标也不会清空未解决事项。30 秒响应是当前目标，长时、多次审批下的稳定时效仍待实测。
 
+审批事件可用 `watch.py detail` 读取完整已捕获画面和证据指纹；画面本身仍可能不含完整命令。
+拒绝、中断与取消新增独立控制回执：先核对身份、记录动作意图，再执行一次并确认结果。
+未确认动作在接管后仍保留，不能因超时而直接重发。操作见[控制回执](skills/agent-orchestrator/references/controls.md)。
+
 操作细节见[监督检查点](skills/agent-orchestrator/references/supervision.md)、[生命周期](skills/agent-orchestrator/references/lifecycle.md)和[巡视与待办](skills/agent-orchestrator/references/efficiency.md)。
 
 ## 追问、恢复和取消
@@ -74,6 +78,10 @@ blocked/error 保留正常续轮路径。旧轮验收可按轮查询与补记，
 恢复先读持久 run，核对当前轮、原生会话、观察健康和待办。发送超时、控制器中断或回执缺失都不能证明任务没有收到；`uncertain` 必须按实际证据核对，不能盲目重发。不要把旧提示词直接发给另一个 pane，也不要依据当前焦点猜测资源身份。
 
 取消不能只看一个 `idle` 状态或一次 Esc；例如某些宿主还有后台子任务或自动续跑机制。按目标字典确认收尾，只处理本任务拥有的终端资源。恢复与状态命令见[持久 run](skills/agent-orchestrator/references/runs.md)、[提交回执](skills/agent-orchestrator/references/submission.md)。
+
+已经分配终端或启动的 job，现在必须确认前台、后台、原生子任务、交互状态和副作用都已收尾，
+才能 `close cancelled`。无结果文件也可取消，不需要伪造 `error`。终端失联只记为未知，
+需要通过实际进程句柄和副作用证据核对；工具不会自动杀进程或发送 Esc。
 
 ## 如何判断真正完成
 

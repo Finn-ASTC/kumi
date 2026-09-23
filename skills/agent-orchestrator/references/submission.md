@@ -5,7 +5,7 @@ agents, sends terminal input or grants approval. Acceptance checks read existing
 v1 stays unchanged. The index holds registered jobs, a single active round per job,
 attempts, launch/native identity, monitoring responsibility and immutable revisions.
 
-Completion adds `accept`, `host` and read-only `check-completion`; see [acceptance and host settling](completion.md). Completed closure now requires accepted output and fresh scoped host evidence as well as success. Legacy missing facts remain unknown; failed/cancelled closure retains its previous evidence contract.
+Completion adds `accept`, `host` and read-only `check-completion`; see [acceptance and host settling](completion.md). Completed closure requires accepted output and fresh scoped host evidence as well as success. Allocated/launched cancelled jobs now require a confirmed stop; see [intervention receipts](controls.md). Legacy missing facts remain unknown; historical closed records are not rewritten.
 
 ## One persistent handle
 
@@ -152,7 +152,8 @@ Bind the new watch, then run `begin → transport → receipt` for the active ro
 |---|---|
 | `renew --input FILE` | `{"lease_seconds":300}`; only a still-live token can renew. |
 | `release` | Releases local ownership, preserving acceptance and attempts. |
-| `close --input FILE` | `outcome=completed|failed|cancelled`, `evidence_path`, `note`; completed requires success, independent acceptance and a fresh settled-host receipt. See [completion](completion.md). Executes no cleanup. |
+| `control-begin` / `control-receipt --input FILE` | Bind deny/interrupt/cancel intent and confirmation to exact identity under the current lease; see [controls](controls.md). Neither executes input. |
+| `close --input FILE` | `outcome=completed|failed|cancelled`, `evidence_path`, `note`; completed requires the completion gates, allocated/launched cancelled requires a confirmed scoped stop. Failed bookkeeping alone does not prove writers stopped. Executes no cleanup. |
 
 After expiry or release, a new `claim` issues a new token. The old token cannot mutate
 the index. **Expiry does not fence external terminal input**: confirm the old controller

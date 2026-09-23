@@ -3,6 +3,11 @@
 Use `watch.py pending` or `runs.py recover` between independent work blocks. Keep
 an active observation owner. A durable queue cannot wake an ended controller.
 
+For full captured evidence use `watch.py detail --watch "$WATCH_FILE" --seq "$SEQ"`.
+For exact denial/interrupt/cancel intent and confirmation, use the
+[intervention receipt sequence](controls.md). Unresolved controls block independent
+work budgets even if their watch is healthy; confirmations do not auto-clear events.
+
 ## Checkpoint before work and input
 
 Establish observation **before the first prompt and before each new round**:

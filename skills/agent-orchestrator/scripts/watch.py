@@ -150,7 +150,13 @@ def observe(target: dict[str, Any]) -> dict[str, Any]:
         screen = run_read(cli + ["pane", "read", pane, "--source", "detection", "--lines", "80"])
     protocol.require(state in STATES, "unrecognized agent state")
     cleaned = ANSI.sub("", screen).replace("\r", "")
-    return {"state": state, "screen": "\n".join(cleaned.splitlines()[-80:])[-32000:]}
+    bounded = "\n".join(cleaned.splitlines()[-80:])[-32000:]
+    return {"state": state, "screen": bounded, "capture": {
+        "source": "visible_screen" if resources["mode"] == "tmux" else "detection",
+        "line_limit": 80, "character_limit": 32000,
+        "locally_truncated": len(cleaned.splitlines()) > 80 or
+            len("\n".join(cleaned.splitlines()[-80:])) > 32000,
+        "completeness": "unknown"}}
 
 
 def collect(target: dict[str, Any]) -> dict[str, Any]:
@@ -369,6 +375,7 @@ def sweep(path: Path, now: float | None = None) -> dict[str, Any]:
                 protocol.publish(evidence, {"target": target, **snapshot, "observed_at": observed})
                 event = {"seq": seq, "job_id": target["job_id"], "round_id": target["round_id"],
                          "kind": kind, "message": message, "evidence_path": str(evidence),
+                         "evidence_sha256": hashlib.sha256(protocol.read_bytes(evidence)).hexdigest(),
                          "screen_tail": snapshot.get("screen", "")[-1000:], "observed_at": observed}
                 if kind in ("attention", "review_due"):
                     key = old["attention_key"] if kind == "attention" else old["fallback_issue"]
@@ -516,6 +523,9 @@ def main() -> int:
     status = commands.add_parser("review-status", help="read latest review revision and locate immutable receipts")
     status.add_argument("--watch", required=True)
     status.add_argument("--seq", type=int, required=True)
+    detail = commands.add_parser("detail", help="read full captured event evidence; never infer complete operation")
+    detail.add_argument("--watch", required=True)
+    detail.add_argument("--seq", type=int, required=True)
     review = commands.add_parser("review", help="record controller review state; never approves a native dialog")
     review.add_argument("--watch", required=True)
     review.add_argument("--seq", type=int, required=True)
@@ -544,13 +554,15 @@ def main() -> int:
             output = wait_events(args.watch, args.after, args.timeout, args.limit)
         elif args.command == "poll":
             output = poll_watch(args.watch)
-        elif args.command in ("pending", "review", "review-status"):
+        elif args.command in ("pending", "review", "review-status", "detail"):
             import reviews
             if args.command == "pending":
                 output = reviews.pending(args.watch, args.limit, args.overdue_after,
                                          waiting_after=args.waiting_after, action_offset=args.action_offset)
             elif args.command == "review-status":
                 output = reviews.review_status(args.watch, args.seq)
+            elif args.command == "detail":
+                output = reviews.event_detail(args.watch, args.seq)
             else:
                 output = reviews.record_review(args.watch, args.seq, args.status,
                     Path(args.note_file).read_text(encoding="utf-8"), args.expected_revision,

@@ -334,6 +334,8 @@ class RoundAcceptanceTests(ToolCase):
     def test_closed_job_audit_lease_only_updates_reviews_and_preserves_closure(self):
         self.publish()
         self.legacy_activate(self.follow())
+        from control_fixtures import stopped
+        self.state = stopped(self.index, self.state, self.token, self.proof, 103)
         self.change(
             "close",
             {
@@ -422,6 +424,8 @@ class RoundAcceptanceTests(ToolCase):
         self.assertEqual(before, {p: p.read_bytes() for p in before})
 
     def test_closed_audit_claim_cli_and_live_lease_exclusion(self):
+        from control_fixtures import stopped
+        self.state = stopped(self.index, self.state, self.token, self.proof, 101)
         self.change(
             "close",
             {

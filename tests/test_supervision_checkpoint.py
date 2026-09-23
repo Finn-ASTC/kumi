@@ -58,6 +58,17 @@ class CheckpointTests(unittest.TestCase):
         self.assertLessEqual(out['work_budget_seconds'], 30)
         self.assertFalse(out['executes_commands'])
 
+    def test_unresolved_control_blocks_budget_even_when_observer_is_healthy(self):
+        import controls
+        with patch.object(watch, 'observe', return_value={'state':'working','screen':'Compiling'}):
+            inspected = controls.inspect(self.runner.data['index_path'], self.target['job_id'])
+            self.runner.mutate('author', 'control-begin', {'kind':'interrupt',
+                'inspection_path':inspected['inspection_path'],
+                'method':{'kind':'keys','description':'Synthetic fixture interruption'},
+                'evidence_path':str(self.fixture.proof),'note':'Fixture stop request'})
+        self.assertFalse(self.check()['can_work'])
+        self.assertTrue(any('control' in e['error'] for e in self.check()['errors']))
+
     def test_actual_observer_expiry_overrides_long_monitor_receipt(self):
         self.runtime(seconds=20)
         out = self.check()
@@ -81,7 +92,8 @@ class CheckpointTests(unittest.TestCase):
     def test_live_lock_cannot_hide_stale_or_failed_target_reads(self):
         for extra in ({'last_successful_check_at':self.now-75}, {'error':'transport failed'}):
             with self.subTest(extra=extra):
-                p=Path(self.handle).with_name('state.json');state=protocol.read_json(p)
+                p=Path(self.handle).with_name('state.json')
+                state=protocol.read_json(p)
                 state['targets'][self.target['round_id']].update(last_successful_check_at=self.now,error=None)
                 state['targets'][self.target['round_id']].update(extra)
                 watch.atomic_save(p,state)
@@ -164,7 +176,8 @@ class CheckpointTests(unittest.TestCase):
         self.assertFalse(self.check()['can_work'])
 
     def test_partial_recovery_and_future_heartbeat_are_not_healthy(self):
-        p=Path(self.handle).with_name('state.json');state=protocol.read_json(p)
+        p=Path(self.handle).with_name('state.json')
+        state=protocol.read_json(p)
         state['targets'][self.target['round_id']]['last_successful_check_at']=self.now+10
         watch.atomic_save(p,state)
         self.assertFalse(self.check()['can_work'])
@@ -180,8 +193,10 @@ class CheckpointTests(unittest.TestCase):
                 with patch.object(watch,'sweep',side_effect=RuntimeError('read failed') if failure else None,
                                   return_value=response), contextlib.redirect_stdout(io.StringIO()):
                     if failure:
-                        with self.assertRaises(RuntimeError):watch.run_observer(self.handle,1,20,True)
-                    else:watch.run_observer(self.handle,1,20,True)
+                        with self.assertRaises(RuntimeError):
+                            watch.run_observer(self.handle,1,20,True)
+                    else:
+                        watch.run_observer(self.handle,1,20,True)
                 state=protocol.read_json(Path(self.handle).with_name('observer.json'))
                 self.assertIsNotNone(state['stopped_at'])
                 self.assertEqual(state['reason'],'failed' if failure else 'stop_on_event')

@@ -207,6 +207,8 @@ class CompletionTests(ToolCase):
         self.assertFalse(self.view()['ready_to_complete'])
 
     def test_failed_and_cancelled_outcomes_do_not_claim_verification(self):
+        from control_fixtures import stopped
+        self.state = stopped(self.index, self.state, self.token, self.proof, 101)
         self.change('close', {'outcome': 'cancelled', 'evidence_path': str(self.proof), 'note': 'No input sent'})
         self.assertFalse(self.view()['accepted_by_verifier'])
 

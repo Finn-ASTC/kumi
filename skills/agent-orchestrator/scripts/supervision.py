@@ -107,6 +107,11 @@ def check(run_path: str | Path, work_seconds: float = 15, max_age: float = 30,
         try:
             state = jobs.load(Path(recovered["run"]["index_path"]), item["job_id"])
             protocol.require(state["revision"] == item["revision"], "job changed during checkpoint; recheck")
+            control = state.get('control')
+            if control and (control['status'] == 'uncertain' or
+                            (control['kind'], control['status']) == ('cancel', 'confirmed')):
+                errors.append({'job_id': state['job_id'], 'error': 'control requires reconciliation or cancellation closure',
+                               'control_id': control['control_id']})
             resources = jobs.resources_for(state["active_request"])
             if resources is not None or state["launch"] is not None or state["submission"] != "prepared":
                 row = coverage_for(state, recovered["watches"], current, max_age, renew_before)

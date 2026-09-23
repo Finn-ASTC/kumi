@@ -105,6 +105,8 @@ Handle the actual dialog within existing authorization, or promptly relay the mi
 
 After a native response, inspect its live outcome and [record that exact occurrence immediately](references/supervision.md#record-each-confirmed-outcome-before-the-next-item), before another dialog or a full recovery scan. Preserve separate action/resolution evidence; sent input alone leaves resolution uncertain. New occurrences remain open.
 
+For denial, interruption or cancellation, use [exact intervention receipts](references/controls.md): inspect, reserve an uncertain control under the job lease, act once, then confirm the observed outcome. Full captured evidence is available through `watch.py detail`; it is not proof that the complete operation was visible. Allocated jobs require confirmed scoped stop evidence before cancelled closure.
+
 ```bash
 python3 "$ORCH_TOOL" validate --request "$REQUEST_FILE"
 ```

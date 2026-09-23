@@ -2,6 +2,7 @@
 
 import json
 import os
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -372,6 +373,8 @@ class RunTests(ToolCase):
         state = jobs.claim(run["index_path"], info["job_id"], state["revision"], "owner")
         proof = self.root / "cancel.txt"
         proof.write_text("Confirmed no task was started")
+        from control_fixtures import stopped
+        state = stopped(run['index_path'], state, state['lease']['token'], proof, time.time())
         jobs.change(run["index_path"], info["job_id"], state["revision"], state["lease"]["token"], "close",
                     {"outcome": "cancelled", "evidence_path": str(proof), "note": "Stopped; historical review retained"})
         self.assertEqual(runs.recover(run["run_path"])["counts"]["open"], 1)

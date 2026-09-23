@@ -236,6 +236,8 @@ class JobTests(ToolCase):
         protocol.publish(self.info["result_path"], self.response())
         with self.assertRaisesRegex(protocol.ProtocolError, "completion"):
             self.change("close", close, now=108)
+        from control_fixtures import stopped
+        self.state = stopped(self.index, self.state, self.token, self.evidence, 108)
         self.change("close", {**close, "outcome": "cancelled"}, now=108)
         self.assertEqual(jobs.recover(self.index, self.job)["next_action"], "closed")
         with self.assertRaisesRegex(protocol.ProtocolError, "closed"):

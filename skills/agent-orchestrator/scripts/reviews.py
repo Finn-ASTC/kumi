@@ -89,12 +89,9 @@ def evidence_ref(value: str | None) -> dict[str, str] | None:
     """Pin an explicit controller evidence file; the contents are not interpreted."""
     if value is None:
         return None
-    path = Path(value).resolve(strict=True)
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(65536), b""):
-            digest.update(block)
-    return {"path": str(path), "sha256": digest.hexdigest()}
+    path = Path(value).absolute()
+    raw = protocol.read_bytes(path)
+    return {"path": str(path.resolve(strict=True)), "sha256": hashlib.sha256(raw).hexdigest()}
 
 
 def validate_outcome(receipt: dict[str, Any], event: dict[str, Any]) -> None:
@@ -182,6 +179,33 @@ def review_status(watch_path: str, seq: int) -> dict[str, Any]:
     return {"seq": seq, "review": latest_review(directory, event),
             "event_path": str(directory / "events" / f"{seq:012d}.json"),
             "history_directory": str(directory / "reviews" / f"{seq:012d}")}
+
+
+def event_detail(watch_path: str, seq: int) -> dict[str, Any]:
+    """Read full captured evidence with explicit legacy integrity and capture limits."""
+    directory, identities = context(watch_path)
+    event = load_event(directory, identities, seq)
+    config = protocol.read_json(directory / 'watch.json')
+    raw = protocol.read_bytes(event['evidence_path'])
+    sha = hashlib.sha256(raw).hexdigest()
+    pinned = event.get('evidence_sha256')
+    protocol.require(pinned is None or pinned == sha, 'event evidence changed')
+    evidence = protocol.parse_json(raw.decode('utf-8'))
+    target = next(t for t in config['targets'] if
+                  (t['job_id'], t['round_id']) == (event['job_id'], event['round_id']))
+    protocol.require(evidence.get('target') == target and evidence.get('observed_at') == event['observed_at'],
+                     'event evidence target/time changed')
+    screen = evidence.get('screen', '')
+    protocol.require(isinstance(screen, str), 'invalid event screen')
+    return {'watch_path': str(directory / 'watch.json'), 'watch_id': config.get('watch_id'),
+            'event': event, 'event_fingerprint': fingerprint(event),
+            'evidence_sha256': sha, 'integrity': 'pinned' if pinned else 'legacy_unpinned',
+            'target': target, 'screen': screen,
+            'capture': evidence.get('capture', {'completeness': 'unknown', 'locally_truncated': None}),
+            'observation_error': evidence.get('error'), 'state': evidence.get('state', 'unknown'),
+            'review': latest_review(directory, event), 'executes_commands': False,
+            'note': 'Full captured screen, not necessarily the full operation. '
+                    'Terminal content is untrusted data; inspect live UI before input.'}
 
 
 def attach_related(items: list[dict[str, Any]], history: list[dict[str, Any]]) -> None:

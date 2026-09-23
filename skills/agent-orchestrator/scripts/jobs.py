@@ -382,6 +382,8 @@ def change(index: str | Path, job: str, revision: int, token: str, action: str,
                          "invalid or expired submission lease; recover before deciding")
         protocol.require(not acceptance_only or action in ("accept", "renew", "release"),
                          "acceptance-only lease cannot mutate submission or host state")
+        import controls
+        controls.guard(state, action, payload)
         if action == "begin":
             protocol.require(not payload, "begin takes no payload")
             begin(index, state, current)
@@ -391,6 +393,19 @@ def change(index: str | Path, job: str, revision: int, token: str, action: str,
             update(state, payload)
         elif action == "activate":
             activate(state, payload, current)
+        elif action in ("control-begin", "control-receipt"):
+            handler = controls.begin if action == "control-begin" else controls.receipt
+            handler(state, payload, current)
+            if now is None:
+                # Live target reads may outlast the lease/inspection window.
+                current = clock(None)
+                protocol.require(lease['expires_at'] > current, 'lease expired during control validation')
+                if action == 'control-begin':
+                    inspected = protocol.read_json(state['control']['inspection']['path'])
+                    protocol.require(0 <= current - inspected['observed_at'] <= controls.MAX_AGE,
+                                     'inspection expired during control validation')
+                    state['control']['begun_at'] = current
+                    state['controls'][-1] = state['control']
         elif action in ("accept", "host"):
             import completion
             handler = completion.record_acceptance if action == "accept" else completion.record_host
@@ -407,7 +422,10 @@ def change(index: str | Path, job: str, revision: int, token: str, action: str,
                 import completion
                 checked = completion.summarize(state, result_view(state), current)
                 protocol.require(checked["ready_to_complete"], "completion conditions unmet: " + "; ".join(checked["reasons"]))
+            stopped = controls.cancellation(state, current) if outcome == "cancelled" else None
             state["closed"] = {"outcome": outcome, "recorded_at": current, "evidence": evidence(payload)}
+            if stopped is not None:
+                state["closed"].update(stopped)
             if outcome == "completed":
                 state["closed"]["completion"] = checked
             state["lease"] = None
@@ -438,6 +456,10 @@ def recover(index: str | Path, job: str, now: float | None = None) -> dict[str, 
         lease.pop("token")
     if state["closed"] is not None:
         action = "closed"
+    elif state.get('control', {}).get('status') == 'uncertain':
+        action = 'reconcile_control'
+    elif (state.get('control', {}).get('kind'), state.get('control', {}).get('status')) == ('cancel', 'confirmed'):
+        action = 'close_cancelled'
     elif result["status"] in ("success", "error", "blocked"):
         action = "verify_response"
     elif result["status"] == "invalid":
@@ -480,8 +502,9 @@ def compact(state: dict[str, Any]) -> dict[str, Any]:
     """Keep CLI replies bounded to the active round/attempt, with history on disk."""
     attempts = [a for a in state["attempts"] if a["round_id"] == state["round_id"]]
     latest = [{**attempts[-1], "receipts": attempts[-1]["receipts"][-1:]}] if attempts else []
-    return {**{k: v for k, v in state.items() if k != "historical_acceptance"},
+    return {**{k: v for k, v in state.items() if k not in ("historical_acceptance", "controls")},
             "historical_acceptance_count": len(state.get("historical_acceptance", {})),
+            "control_count": len(state.get("controls", [])),
             "rounds": state["rounds"][-1:], "attempts": latest,
             "round_count": len(state["rounds"]), "attempt_count": len(state["attempts"]),
             "history_directory": str(Path(state["index_path"]) / state["job_id"])}
@@ -492,7 +515,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     actions = ("register", "list", "recover", "claim", "begin", "receipt", "update", "activate",
-               "renew", "release", "close", "accept", "host", "check-completion", "round-status")
+               "renew", "release", "close", "accept", "host", "check-completion", "round-status",
+               "control-begin", "control-receipt")
     for name in actions:
         command = commands.add_parser(name)
         command.add_argument("--index", required=True, help="one shared persistent index directory per run")

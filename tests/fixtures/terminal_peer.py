@@ -42,6 +42,10 @@ def main():
             line.clear()
             if text == "/exit":
                 return
+            if text == 'DENY' and pending is not None:
+                pending, permission_stage = None, None
+                print('\x1b[2J\x1b[HFixture operation denied; no result published\r', flush=True)
+                continue
             if not text:
                 continue
             if text == 'NEXT_PERMISSION' and permission_stage == 'prose':
