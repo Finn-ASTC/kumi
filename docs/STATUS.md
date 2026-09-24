@@ -16,12 +16,13 @@
 
 - M0 成员发现和 M1a 文件消息首版仅在实验分支（当前基于 `c5d3993`）；main 尚无消息、提醒、通知或防遗忘收口。实验首版已通过 7 项消息回归和全仓库 647 项回归，但不等于可运行包能力。
 - AP 只有通用开发用影子工具；真实模型质量评测、审批持久队列与自动执行尚未完成。
-- UX-01 页面已交付；UX-02a 有显式 run 的只读目录 CLI、`session-registry` 身份关系 sidecar 和 `capability-registry` 能力证据 sidecar。目录会按 verified resume/archive 能力生成 dry-run 预览，未登记或未验证仍保持 blocker；原生历史隔离/归档/恢复尚未实现；旧历史未被整理。
+- UX-01 页面已交付；UX-02a 有显式 run 的只读目录 CLI、`session-registry` 身份关系 sidecar 和 `capability-registry` 能力证据 sidecar。能力证据 v2 固定 SHA-256，失效/旧 v1 有效状态降为 unknown；同轮多登记显示歧义，缺运行时检查/adapter 时 eligible 保持 false；原生历史隔离/归档/恢复尚未实现；旧历史未被整理。
 - CQ-01 有最小工具闭环，完整原生覆盖和成本结论仍未具备；辅助计量继续按原版宿主扩展。
 - 四宿主/五配置同等纳入协议和矩阵，未测保持未测。本机 omp 18.3.0 仅有前轮帮助证据，
   不能沿用旧版原生验收。版本事实见[宿主审计](HOST-COMPATIBILITY-20260923.md)。
 
-本次增加只读会话目录、显式登记 sidecar 和针对性回归；不改变宿主配置、日常安装或运行服务。
+本轮用独立 sandbox CLI 与六 skills 复制包复现/修复预览缺陷，详见[验证记录](SESSION-PREVIEW-VALIDATION.md)。
+没有启动真实宿主/模型；不改变宿主配置、日常安装或运行服务。
 详细技术规格见 [M1](M1-IMPLEMENTATION-PLAN.md)、[UX-02](SESSION-MANAGEMENT.md)和
 [判定报告跟进](DECISION-LAYER-FOLLOWUP.md)；所有新功能均按各自证据晋级。
 

@@ -173,13 +173,30 @@ def record_host(state: dict[str, Any], payload: dict[str, Any], now: float) -> N
     state.setdefault('completion', {})['host'] = record
 
 
+def host_summary(state: dict[str, Any], result: dict[str, Any], now: float) -> dict[str, Any]:
+    """Check only host evidence; session previews need not inspect delivery trees."""
+    host = state.get('completion', {}).get('host')
+    identity = binding(state, result)
+    if host is None:
+        return {'settled': False, 'reason': 'host observation is missing'}
+    try:
+        protocol.require(host['version'] == 1 and all(host[k] == v for k, v in identity.items()) and
+                         host['target'] == target(state), 'host observation identity changed')
+        evidence_valid(host)
+        protocol.require(host['status'] == 'settled' and host['disposition'] in ('reusable', 'exited') and
+                         set(host['checks']) == CHECKS and all(v == 'clear' for v in host['checks'].values()) and
+                         all(c['status'] == 'settled' for c in host['children']), 'host is not settled')
+        protocol.require(host['observed_at'] <= now < host['valid_until'], 'host observation expired')
+        return {'settled': True, 'reason': None}
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError) as exc:
+        return {'settled': False, 'reason': f'host: {exc}'}
+
+
 def summarize(state: dict[str, Any], result: dict[str, Any], now: float) -> dict[str, Any]:
     """Recheck evidence without inferring live health from a historical completed state."""
     facts = state.get('completion', {})
-    identity = binding(state, result)
     published = result['status'] in ('success', 'error', 'blocked')
     reasons = []
-    accepted = settled = False
     if result['status'] != 'success':
         reasons.append('current round has no valid success response')
     acceptance, host = facts.get('acceptance'), facts.get('host')
@@ -187,20 +204,10 @@ def summarize(state: dict[str, Any], result: dict[str, Any], now: float) -> dict
     accepted = review['status'] == 'accepted'
     if not accepted:
         reasons.append('acceptance: ' + (review['reason'] or 'verifier rejected the result'))
-    if host is None:
-        reasons.append('host observation is missing')
-    else:
-        try:
-            protocol.require(host['version'] == 1 and all(host[k] == v for k, v in identity.items()) and
-                             host['target'] == target(state), 'host observation identity changed')
-            evidence_valid(host)
-            protocol.require(host['status'] == 'settled' and host['disposition'] in ('reusable', 'exited') and
-                             set(host['checks']) == CHECKS and all(v == 'clear' for v in host['checks'].values()) and
-                             all(c['status'] == 'settled' for c in host['children']), 'host is not settled')
-            protocol.require(host['observed_at'] <= now < host['valid_until'], 'host observation expired')
-            settled = True
-        except (OSError, ValueError, KeyError, TypeError, RuntimeError) as exc:
-            reasons.append(f'host: {exc}')
+    checked_host = host_summary(state, result, now)
+    settled = checked_host['settled']
+    if not settled:
+        reasons.append(checked_host['reason'])
     return {'response_published': published, 'response_status': result['status'],
             'acceptance_status': review['status'],
             'accepted_by_verifier': accepted, 'host_settled': settled,

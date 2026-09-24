@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from test_token_tools import ToolCase
 import capabilities
+import completion
 import jobs
 import protocol
 import runs
@@ -162,16 +163,16 @@ class SessionDirectoryTests(ToolCase):
         coordinator = registry.register(
             self.run["run_path"], registration_id=coordinator_id,
             host="omp", store="/state/kumi/main", profile="default",
-            session_id="coord-session", role="coordinator", job_id=state["job_id"],
-            round_id=state["round_id"], now="2026-09-24T00:00:00Z")
+            session_id="coord-session", role="coordinator", kind="external",
+            now="2026-09-24T00:00:00Z")
         worker = registry.register(
             self.run["run_path"], registration_id=worker_id,
-            host="hermes", store="/state/kumi/worker", profile="private",
-            session_id="worker-session", role="worker", job_id=state["job_id"],
+            host="hermes", store="/state/kumi/worker", profile="private-profile",
+            session_id="native-session-1", role="worker", job_id=state["job_id"],
             round_id=state["round_id"], parent_registration_id=coordinator_id,
             relationship="kumi_delegation", label="Implement parser · Hermes · 2222",
             now="2026-09-24T00:00:01Z")
-        self.assertEqual(coordinator["kind"], "managed")
+        self.assertEqual(coordinator["kind"], "external")
         self.assertEqual(worker["parent_registration_id"], coordinator_id)
         self.assertEqual(registry.list_records(self.run["run_path"]), [coordinator, worker])
         self.assertEqual(registry.digest([coordinator, worker]), registry.digest([coordinator, worker]))
@@ -208,6 +209,7 @@ class SessionDirectoryTests(ToolCase):
     def test_capability_registry_is_explicit_and_feeds_dry_run(self):
         _, state = self.add_job()
         evidence = str(self.root / "probe.json")
+        Path(evidence).write_text('{"fixture": true, "body": "PRIVATE PROBE BODY"}')
         registry.register(self.run["run_path"], registration_id="b" * 32,
                           host="hermes", store="/state/worker", profile="private-profile",
                           session_id="native-session-1", role="worker", job_id=state["job_id"],
@@ -221,15 +223,21 @@ class SessionDirectoryTests(ToolCase):
             capability="archive", status="verified", evidence_path=evidence,
             observed_at="2026-09-24T00:00:00Z", host_version="0.21.3")
         self.assertEqual(capabilities.list_records(self.run["run_path"]),
-                         sorted([archive, resume], key=lambda item: item["record_id"]))
+                         sorted([capabilities.assessment(archive), capabilities.assessment(resume)],
+                                key=lambda item: item["record_id"]))
         view = sessions.directory(self.run["run_path"], job_id=state["job_id"])
         row = view["sessions"][0]
-        self.assertEqual(row["recovery_preview"]["dry_run"]["blockers"], [])
-        self.assertTrue(row["recovery_preview"]["dry_run"]["eligible"])
+        self.assertIn("native_resume_adapter_unavailable", row["recovery_preview"]["dry_run"]["blockers"])
+        self.assertNotIn("native_resume_capability_unverified", row["recovery_preview"]["dry_run"]["blockers"])
+        self.assertFalse(row["recovery_preview"]["dry_run"]["eligible"])
         self.assertEqual(row["archive_preview"]["capability_status"], "verified")
         self.assertEqual(view["capability_registry"]["count"], 2)
-        self.assertEqual(view["capability_registry"]["records"],
-                         sorted([archive, resume], key=lambda item: item["record_id"]))
+        self.assertEqual({r["effective_status"] for r in view["capability_registry"]["records"]}, {"verified"})
+        self.assertNotIn("PRIVATE PROBE BODY", json.dumps(view))
+        self.assertNotIn("evidence_path", json.dumps(view["capability_registry"]))
+        Path(evidence).write_text("changed evidence")
+        view = sessions.directory(self.run["run_path"])
+        self.assertEqual(view["sessions"][0]["recovery_preview"]["capability_status"], "unknown")
 
     def test_verified_capability_requires_evidence_and_conflicts_are_rejected(self):
         with self.assertRaises(ValueError):
@@ -240,7 +248,7 @@ class SessionDirectoryTests(ToolCase):
         with self.assertRaises(ValueError):
             capabilities.register(self.run["run_path"], host="codex", profile="default",
                                   capability="resume", status="unsupported", note="changed")
-        self.assertEqual(capabilities.list_records(self.run["run_path"]), [record])
+        self.assertEqual(capabilities.list_records(self.run["run_path"]), [capabilities.assessment(record)])
 
     def test_external_user_session_is_unowned_and_parent_must_exist(self):
         external = registry.register(
@@ -257,10 +265,12 @@ class SessionDirectoryTests(ToolCase):
                               relationship="kumi_delegation")
         self.assertEqual(registry.list_records(self.run["run_path"]), [external])
 
-    def test_registry_rejects_closed_job_and_relationship_cycle(self):
+    def test_registry_rejects_new_closed_registration_but_allows_exact_retry(self):
         _, state = self.add_job()
-        # Closing through the normal protocol is intentionally avoided here: a
-        # synthetic terminal snapshot still exercises the registration guard.
+        args = dict(run_path=self.run["run_path"], registration_id="9" * 32,
+                    host="hermes", store="/state", profile="private-profile", session_id="native-session-1",
+                    role="worker", job_id=state["job_id"], round_id=state["round_id"])
+        registered = registry.register(**args)
         evidence_path = self.root / "closure-evidence.json"
         evidence_path.write_text("{}", encoding="utf-8")
         index = Path(self.run["index_path"])
@@ -269,8 +279,112 @@ class SessionDirectoryTests(ToolCase):
                             {"outcome": "failed", "note": "test closure",
                              "evidence_path": str(evidence_path)},
                             now=self.now + 2)
+        self.assertEqual(registry.register(**args), registered)
         with self.assertRaises(ValueError):
-            registry.register(self.run["run_path"], registration_id="9" * 32,
-                              host="omp", store="/state", profile="default",
-                              session_id="closed", role="worker", job_id=state["job_id"],
-                              round_id=state["round_id"])
+            registry.register(**{**args, "registration_id": "8" * 32})
+        row = sessions.directory(self.run["run_path"])["sessions"][0]
+        self.assertIn("job_closed", row["recovery_preview"]["dry_run"]["blockers"])
+        self.assertFalse(row["recovery_preview"]["candidate"])
+        self.assertIn("host_not_proven_settled", row["archive_preview"]["blockers"])
+        self.assertNotIn("test closure", json.dumps(row))
+
+    def test_multiple_same_round_registrations_never_select_by_sort_order(self):
+        _, state = self.add_job()
+        args = dict(run_path=self.run["run_path"], host="hermes", store="/state/one", profile="private-profile",
+                    session_id="native-session-1", role="worker", job_id=state["job_id"], round_id=state["round_id"])
+        registry.register(**args, registration_id="1" * 32)
+        registry.register(**{**args, "store": "/state/two"}, registration_id="2" * 32)
+        before = self.snapshot_files()
+        row = sessions.directory(self.run["run_path"])["sessions"][0]
+        self.assertEqual(row["native_identity"]["status"], "ambiguous_registration")
+        self.assertIsNone(row["native_identity"]["store"])
+        self.assertFalse(row["recovery_preview"]["candidate"])
+        self.assertIn("ambiguous_registration", row["archive_preview"]["blockers"])
+        self.assertEqual(before, self.snapshot_files())
+
+    def test_profile_mismatch_and_uncertain_submission_block_recovery(self):
+        _, state = self.add_job()
+        record = registry.register(self.run["run_path"], registration_id="1" * 32, host="hermes",
+                                   store="/state", profile="other", session_id="native-session-1",
+                                   role="worker", job_id=state["job_id"], round_id=state["round_id"])
+        state["submission"] = "uncertain"
+        row = sessions._session_row(self.run, state, record, now=self.now + 2)
+        self.assertEqual(row["native_identity"]["status"], "identity_conflict")
+        blockers = row["recovery_preview"]["dry_run"]["blockers"]
+        self.assertIn("submission_uncertain", blockers)
+        self.assertIn("input_ownership_not_verified", blockers)
+        self.assertIn("host_not_proven_settled", blockers)
+        self.assertFalse(row["recovery_preview"]["dry_run"]["eligible"])
+
+    def test_host_preview_rechecks_freshness_without_loading_delivery_tree(self):
+        info, state = self.add_job()
+        response = self.response(job_id=state["job_id"], round_id=state["round_id"])
+        protocol.publish(info["result_path"], response)
+        proof = self.root / "host-proof.json"
+        proof.write_text('{"fixture": true}')
+        state = jobs.change(self.run["index_path"], state["job_id"], state["revision"],
+                            state["lease"]["token"], "host", {
+                                "host": "hermes", "host_version": "fixture-1", "status": "settled",
+                                "disposition": "reusable", "observed_at": self.now + 2,
+                                "valid_until": self.now + 30, "checks": dict.fromkeys(completion.CHECKS, "clear"),
+                                "children": [], "side_effect_paths": [], "evidence_path": str(proof),
+                                "note": "Synthetic host observation"}, now=self.now + 3)
+        with patch.object(completion, "acceptance_summary", side_effect=AssertionError("no delivery scan")):
+            row = sessions._session_row(self.run, state, now=self.now + 4)
+            self.assertNotIn("host_not_proven_settled", row["archive_preview"]["blockers"])
+            row = sessions._session_row(self.run, state, now=self.now + 31)
+            self.assertIn("host_not_proven_settled", row["archive_preview"]["blockers"])
+            proof.write_text("changed")
+            row = sessions._session_row(self.run, state, now=self.now + 4)
+            self.assertIn("host_not_proven_settled", row["archive_preview"]["blockers"])
+
+    def test_redirected_session_registry_is_never_read_or_written(self):
+        root = Path(self.run["run_path"]).parent / registry.REGISTRY_NAME
+        outside = self.root / "outside"
+        outside.mkdir()
+        root.symlink_to(outside, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            registry.list_records(self.run["run_path"])
+        with self.assertRaises(ValueError):
+            registry.register(self.run["run_path"], registration_id="1" * 32, host="omp", store="/state",
+                              profile="default", session_id="external", role="coordinator", kind="external")
+        self.assertEqual(list(outside.iterdir()), [])
+
+    def test_registry_detects_filename_parent_loss_and_cycle_on_read(self):
+        args = dict(run_path=self.run["run_path"], host="omp", store="/state", profile="default",
+                    session_id="main", role="user", kind="external")
+        parent = registry.register(**args, registration_id="1" * 32)
+        child = registry.register(**{**args, "session_id": "child"}, registration_id="2" * 32,
+                                  parent_registration_id=parent["registration_id"], relationship="native_child")
+        root = Path(self.run["run_path"]).parent / registry.REGISTRY_NAME
+        path = root / (parent["registration_id"] + ".json")
+        moved = path.with_suffix(".missing")
+        path.rename(moved)
+        with self.assertRaises(ValueError):
+            registry.list_records(self.run["run_path"])
+        moved.rename(path)
+        parent.update(parent_registration_id=child["registration_id"], relationship="native_child")
+        path.write_text(json.dumps(parent))
+        with self.assertRaises(ValueError):
+            registry.list_records(self.run["run_path"])
+        parent.update(parent_registration_id=None, relationship="root", registration_id="3" * 32)
+        path.write_text(json.dumps(parent))
+        with self.assertRaises(ValueError):
+            registry.list_records(self.run["run_path"])
+
+    def test_registry_lock_busy_and_lost_receipt_recovery(self):
+        args = dict(run_path=self.run["run_path"], registration_id="1" * 32, host="omp", store="/state",
+                    profile="default", session_id="external", role="coordinator", kind="external")
+        with jobs.locked(Path(self.run["index_path"])), self.assertRaises(ValueError):
+            registry.register(**args)
+        self.assertEqual(registry.list_records(self.run["run_path"]), [])
+        with patch.object(registry.jobs, "sync_directory", side_effect=OSError("lost reply")), self.assertRaises(OSError):
+            registry.register(**args)
+        registered = registry.register(**args)
+        self.assertEqual(registry.list_records(self.run["run_path"]), [registered])
+
+    def test_cli_fault_demo_works_with_isolated_retained_project(self):
+        import session_preview_demo
+        report = session_preview_demo.run(self.root)
+        self.assertTrue(report["passed"], report["checks"])
+        self.assertEqual(report["native_hosts_started"], 0)

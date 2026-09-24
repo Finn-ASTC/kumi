@@ -8,8 +8,10 @@ starts, resumes, archives, or otherwise writes to a native host.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import sys
@@ -36,9 +38,13 @@ def _text(value: Any, label: str, *, none: bool = False) -> str | None:
     return value
 
 
-def _root(run: dict[str, Any]) -> Path:
+def _root(run: dict[str, Any], *, create: bool = False) -> Path:
     path = Path(run["run_path"]).parent / REGISTRY_NAME
-    path.mkdir(mode=0o700, exist_ok=True)
+    if create:
+        path.mkdir(mode=0o700, exist_ok=True)
+    if os.path.lexists(path):
+        protocol.require(path.is_dir() and path.resolve() == path,
+                         "capability registry missing or redirected")
     return path
 
 
@@ -48,9 +54,16 @@ def _key(host: str, profile: str, capability: str) -> str:
 
 
 def _validate(record: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
-    protocol.require(record.get("version") == 1 and record.get("run_id") == run["run_id"]
+    protocol.require(type(record.get("version")) is int and record["version"] in (1, 2)
+                     and record.get("run_id") == run["run_id"]
                      and record.get("run_path") == run["run_path"], "invalid capability record")
-    protocol.require(ID.fullmatch(record.get("record_id", "")), "invalid capability record ID")
+    protocol.require(isinstance(record.get("record_id"), str) and ID.fullmatch(record["record_id"]),
+                     "invalid capability record ID")
+    fields = {"version", "record_id", "run_id", "run_path", "host", "profile", "capability", "status",
+              "evidence_path", "observed_at", "host_version", "note"}
+    if record["version"] == 2:
+        fields.add("evidence_sha256")
+    protocol.require(set(record) == fields, "invalid capability record fields")
     for key in ("host", "profile", "capability", "status", "evidence_path", "observed_at", "host_version", "note"):
         _text(record.get(key), key, none=key in {"evidence_path", "observed_at", "host_version", "note"})
     protocol.require(record["record_id"] == _key(record["host"], record["profile"], record["capability"]),
@@ -60,7 +73,41 @@ def _validate(record: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
     if record["status"] == "verified":
         protocol.require(record["evidence_path"] is not None and record["observed_at"] is not None,
                          "verified capability requires evidence and observation time")
+    if record["version"] == 2:
+        if record["observed_at"] is not None:
+            _observed(record["observed_at"])
+        if record["evidence_path"] is not None:
+            protocol.require(Path(record["evidence_path"]).is_absolute()
+                             and isinstance(record["evidence_sha256"], str)
+                             and ID.fullmatch(record["evidence_sha256"]), "invalid evidence pin")
+        else:
+            protocol.require(record["evidence_sha256"] is None, "digest requires evidence path")
+        if record["status"] == "verified":
+            protocol.require(record["host_version"] is not None, "verified capability needs host version")
     return record
+
+
+def _observed(value: str) -> None:
+    stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    protocol.require(stamp.tzinfo is not None and stamp.utcoffset() is not None
+                     and stamp <= datetime.now(timezone.utc), "invalid observation time")
+
+
+def assessment(record: dict[str, Any]) -> dict[str, Any]:
+    """Verify reference integrity, not the truth or current applicability of a claim."""
+    evidence_status = "not_provided"
+    if record.get("evidence_path") is not None:
+        evidence_status = "unpinned"
+        if record.get("evidence_sha256") is not None:
+            try:
+                valid = jobs.fingerprint(Path(record["evidence_path"])) == record["evidence_sha256"]
+            except (OSError, ValueError):
+                valid = False
+            evidence_status = "valid" if valid else "invalid"
+    effective = record["status"]
+    if effective == "verified" and evidence_status != "valid":
+        effective = "unknown"
+    return {**record, "effective_status": effective, "evidence_status": evidence_status}
 
 
 def register(run_path: str, *, host: str, profile: str, capability: str,
@@ -69,39 +116,51 @@ def register(run_path: str, *, host: str, profile: str, capability: str,
              note: str | None = None) -> dict[str, Any]:
     """Record a capability claim or verification without invoking its host."""
     run = runs.load_run(run_path)
-    _text(host, "host"); _text(profile, "profile"); _text(capability, "capability")
-    _text(status, "status"); _text(evidence_path, "evidence_path", none=True)
-    _text(observed_at, "observed_at", none=True); _text(host_version, "host_version", none=True)
+    _text(host, "host")
+    _text(profile, "profile")
+    _text(capability, "capability")
+    _text(status, "status")
+    _text(evidence_path, "evidence_path", none=True)
+    _text(observed_at, "observed_at", none=True)
+    _text(host_version, "host_version", none=True)
     _text(note, "note", none=True)
-    record = {"version": 1, "record_id": _key(host, profile, capability),
+    record = {"version": 2, "record_id": _key(host, profile, capability),
               "run_id": run["run_id"], "run_path": run["run_path"], "host": host,
               "profile": profile, "capability": capability, "status": status,
               "evidence_path": evidence_path, "observed_at": observed_at,
-              "host_version": host_version, "note": note}
+              "host_version": host_version, "note": note, "evidence_sha256": None}
+    if evidence_path is not None:
+        protocol.require(Path(evidence_path).is_absolute(), "evidence must be an absolute path")
+        record["evidence_sha256"] = jobs.fingerprint(Path(evidence_path))
     _validate(record, run)
-    root = _root(run)
-    path = root / (record["record_id"] + ".json")
     with jobs.locked(Path(run["index_path"])):
+        root = _root(run, create=True)
+        path = root / (record["record_id"] + ".json")
         try:
             existing = protocol.read_json(path)
         except FileNotFoundError:
             protocol.publish(path, record)
             jobs.sync_directory(root)
+            jobs.sync_directory(root.parent)
             return record
         protocol.require(existing == record, "capability record already has different details")
+        jobs.sync_directory(root)
+        jobs.sync_directory(root.parent)
         return _validate(existing, run)
 
 
 def list_records(run_path: str) -> list[dict[str, Any]]:
     """Read capability sidecars; absent records remain unknown."""
     run = runs.load_run(run_path)
-    root = Path(run["run_path"]).parent / REGISTRY_NAME
+    root = _root(run)
     if not root.is_dir():
         return []
     records: list[dict[str, Any]] = []
-    for path in sorted(root.glob("[0-9a-f]" * 64 + ".json")):
+    for path in sorted(root.glob("*.json")):
+        protocol.require(ID.fullmatch(path.stem), "invalid capability filename")
         record = protocol.read_json(path)
-        records.append(_validate(record, run))
+        protocol.require(record.get("record_id") == path.stem, "capability filename mismatch")
+        records.append(assessment(_validate(record, run)))
     return records
 
 

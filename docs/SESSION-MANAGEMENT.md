@@ -1,6 +1,6 @@
 # UX-02 会话管理：日常入口、子会话收纳与精确恢复
 
-日期：2026-09-24；核对基线 `c67fe38`。**状态：UX-02a 只读 CLI 首版已实现；统一会话身份、
+日期：2026-09-24；本轮修复前基线 `710f3b3`。**状态：UX-02a 显式登记、能力证据和只读预览已实现；
 原生历史策略、归档和恢复仍未实现。** 本次没有启动模型、扫描私人会话正文、归档/删除
 历史、修改宿主配置或迁移存储。全部执行顺序、状态和下一单元统一见
 [综合实施计划](IMPLEMENTATION-PLAN.md)，本页只定义 UX-02 的边界和验收。
@@ -47,21 +47,29 @@ ID、五配置的能力状态，以及逐 job 恢复/归档 blocker 预览。标
 
 目录旁的 `session-registry/` 是 kumi 自有 sidecar。`registry.py` 只接受显式的 host、
 store、profile、精确 session ID、角色及关系；同一登记号的相同重试幂等，冲突输入失败，
-父登记必须存在且不能形成循环。用户主会话可登记为 `external`/`user`，没有 job 所有权，
-不会因为同 cwd 被接管。sidecar 不写宿主配置、数据库或聊天历史；job 已关闭、round 不在
-历史、未知父项和不完整原生定位均拒绝登记。目录把已登记记录放在 `registrations` 和对应
-job 行中，历史未登记的行继续显示 unknown。
+父登记必须存在且不能形成循环。用户主会话可登记为 `external`＋`user`/`coordinator`，没有 job 所有权，
+不会因为同 cwd 被接管。sidecar 不写宿主配置、数据库或聊天历史；新登记遇到 job 已关闭、
+round 不在历史、未知父项或不完整原生定位时拒绝。目录把已登记记录放在 `registrations` 和对应
+job 行中，历史未登记的行继续显示 unknown。相同登记的重试可在关闭后读回原记录；关闭后不允许
+新增登记。同一活动 job/round 有多条记录时显示 `ambiguous_registration`，不能按排序选择。
+读回也核对父关系、文件名、run 归属及路径重定向。
 
 `capability-registry/` 现在可以按 host＋profile 登记 `session_store_isolation`、
 `native_history_visibility`、`resume`、`archive`、派生范围和证据读取能力。`declared`、
-`unknown`、`unsupported` 不会解除门禁；只有带证据引用和观察时间的 `verified` 才能解除
-对应 dry-run blocker。目录仍显示五配置矩阵，未登记配置保持 unknown；登记能力不会启动
-宿主命令，也不会改变 native 历史。
+`unknown`、`unsupported` 不会解除能力证据 blocker。v2 记录要求 verified 有明确宿主版本、
+带时区且非未来的观察时间和真实证据文件，并固定 SHA-256。读回分别返回原始 `status` 与
+`effective_status`：证据失效或 v1 未固定摘要时，有效状态为 unknown。证据完好只能解除能力
+证据缺失项；不是对能力事实、当前版本/store/config 的自动认证，适用性和 adapter blocker 保留。
+目录仍显示五配置矩阵，未登记配置保持 unknown；登记能力不会启动宿主命令或改变 native 历史。
 
 这仍不是完整 UX-02a：能力记录是显式证据 sidecar，不是本机自动探针或 adapter 结果；尚无
 启动策略、可执行归档/恢复，也不能恢复原生会话。当前 dry-run 只判断身份、job 状态、能力和
-消息责任是否满足前置条件，`available` 仍为 false。登记只提供可审计身份和关系，不把登记
-本身当作恢复或归档许可。相应验收仍留在综合计划，不把目录行数当作宿主 picker 已清理。
+消息责任是否满足前置条件，`eligible` 与 `available` 均保持 false。宿主状态单独复用 completion
+证据核对，不顺带遍历完整交付树；关闭证据、能力备注和证明正文不进入摘要。登记不把自身
+当作恢复或归档许可。相应验收仍留在综合计划，不把目录行数当作宿主 picker 已清理。
+
+可重跑的 CLI 故障实验与修复前后范围见[验证记录](SESSION-PREVIEW-VALIDATION.md)；运行包内
+自包含的登记/证据/预览命令见[会话参考](../skills/agent-orchestrator/references/sessions.md)。
 
 不通过全局删除旧会话、关闭日志、默认 ephemeral、修改宿主数据库或打本体补丁来
 整理列表。Git worktree 按代码隔离需要使用，不为了隐藏会话伪造 cwd 或改变项目指令范围。
