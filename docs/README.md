@@ -6,9 +6,9 @@
 | 安装、复制分发、更新、卸载 | [部署与接入说明](../INTEGRATION.md) |
 | 并行、权限、恢复、取消和交付 | [使用指南](../USAGE.md) |
 | 能力边界、既有事项编号和后续优先级 | [状态与路线](STATUS.md) |
-| 全项目路线、主线缺口与消息实验分工 | [综合实施计划](IMPLEMENTATION-PLAN.md#下一阶段执行队列) |
-| 近期逐批执行：消息、防遗忘、提醒/收口、hcom 对照与验收 | [M1 详细执行计划](M1-IMPLEMENTATION-PLAN.md) |
-| 主线收口顺序与独立消息实验边界 | [主线执行队列](IMPLEMENTATION-PLAN.md#2026-09-24-主线收口与实验分支分开推进) |
+| 唯一执行总表：已有状态、全部顺序、依赖、验收与下一单元 | [综合实施计划](IMPLEMENTATION-PLAN.md#下一阶段执行队列) |
+| 消息、防遗忘、提醒/收口、hcom 对照的技术规格与批次映射 | [M1 详细规格](M1-IMPLEMENTATION-PLAN.md) |
+| 监督时效、计量、宿主兼容等持续事项的检查点 | [主线持续工作](IMPLEMENTATION-PLAN.md#2026-09-24-主线收口与实验分支分开推进) |
 | 审批发现、复核记账与解决证据的时效复盘 | [B3 监督时效审计](B3-SUPERVISION-AUDIT.md) |
 | 实际宿主版本、接口验证及升级跟进项 | [宿主兼容审计](HOST-COMPATIBILITY-20260923.md) |
 | Jev/Laya/Von/Foq 等决策后端的候选与评测门槛 | [审批后端选型](APPROVAL-MODEL-SELECTION.md) |
