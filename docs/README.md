@@ -18,6 +18,7 @@
 | 按轮查询与补记验收、切轮门槛和历史兼容 | [DH-01 按轮验收](DH1-ROUND-ACCEPTANCE.md) |
 | 审批证据、动作回执、停止确认与无结果取消 | [DH-02/03 首批](DH23-CONTROLS.md) |
 | 同 space 默认 tab、任务＋agent 标题及桌面验证 | [UX-01 页面体验](UX1-PAGES.md) |
+| 日常主会话与子会话历史分组、存储隔离、归档及精确恢复（规划） | [UX-02 会话管理](SESSION-MANAGEMENT.md) |
 | 回归测试和探针 | [测试索引](../tests/README.md) |
 | 恢复摘要的验证与输出规模 | [C1 验证记录](C1-RECOVERY.md) |
 | 增量读取、续读与失效验证 | [C2 验证记录](C2-RECOVERY.md) |
