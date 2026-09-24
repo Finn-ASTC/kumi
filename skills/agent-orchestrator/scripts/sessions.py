@@ -12,6 +12,7 @@ from typing import Any
 
 import jobs
 import protocol
+import capabilities
 import registry
 import runs
 
@@ -30,7 +31,8 @@ def _text(value: Any, label: str, limit: int) -> str | None:
 
 
 def _session_row(run: dict[str, Any], state: dict[str, Any],
-                 registration: dict[str, Any] | None = None) -> dict[str, Any]:
+                 registration: dict[str, Any] | None = None,
+                 capability_records: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     request = protocol.load_request(state["active_request"])
     launch = state.get("launch")
     native = state.get("native")
@@ -67,6 +69,8 @@ def _session_row(run: dict[str, Any], state: dict[str, Any],
     registered_host = registration.get("host") if registration else None
     registered_store = registration.get("store") if registration else None
     registered_profile = registration.get("profile") if registration else profile
+    capability_map = capabilities.by_host_profile(
+        capability_records or [], registered_host, registered_profile)
     identity_conflict = bool(registration and registration.get("session_id") != session_id)
     native_state = ("identity_conflict" if identity_conflict else
                     "unbound" if session_id is None else
@@ -85,7 +89,18 @@ def _session_row(run: dict[str, Any], state: dict[str, Any],
         archive_reasons.append("native_session_unbound")
     if identity_conflict:
         archive_reasons.append("native_identity_conflict")
-    archive_reasons.extend(("message_responsibility_not_integrated", "native_archive_adapter_unavailable"))
+    archive_reasons.append("message_responsibility_not_integrated")
+    archive_status = capability_map.get("archive", {}).get("status", "unknown")
+    resume_status = capability_map.get("resume", {}).get("status", "unknown")
+    if archive_status != "verified":
+        archive_reasons.append("native_archive_adapter_unavailable")
+    recovery_blockers: list[str] = []
+    if closed is not None:
+        recovery_blockers.append("job_closed")
+    if session_id is None or not (registered_host and registered_store) or identity_conflict:
+        recovery_blockers.append("native_identity_unavailable")
+    if resume_status != "verified":
+        recovery_blockers.append("native_resume_capability_unverified")
     if registration and registration.get("group"):
         group = registration["group"]
     elif registration and registration.get("role") == "user":
@@ -117,8 +132,10 @@ def _session_row(run: dict[str, Any], state: dict[str, Any],
             "available": False, "candidate": session_id is not None and not identity_conflict,
             "executes_commands": False,
             "reason": "verified host/store adapter and current input ownership are not available",
+            "dry_run": {"eligible": not recovery_blockers, "blockers": recovery_blockers},
         },
-        "archive_preview": {"eligible": False, "blockers": archive_reasons},
+        "archive_preview": {"eligible": not archive_reasons, "blockers": archive_reasons,
+                            "capability_status": archive_status},
     }
 
 
@@ -131,6 +148,7 @@ def directory(run_path: str, *, job_id: str | None = None, limit: int = 100,
         require(isinstance(job_id, str) and jobs.ID.fullmatch(job_id), "invalid job_id")
     run = runs.load_run(run_path)
     records = registry.list_records(run_path)
+    capability_records = capabilities.list_records(run_path)
     by_job_round = {(record.get("job_id"), record.get("round_id")): record
                     for record in records if record.get("job_id") is not None}
     index = Path(run["index_path"])
@@ -148,7 +166,8 @@ def directory(run_path: str, *, job_id: str | None = None, limit: int = 100,
             continue
         try:
             state = jobs.load(index, path.name)
-            rows.append(_session_row(run, state, by_job_round.get((state["job_id"], state["round_id"]))))
+            rows.append(_session_row(run, state, by_job_round.get((state["job_id"], state["round_id"])),
+                                     capability_records))
         except (OSError, ValueError, KeyError, TypeError, IndexError):
             errors.append({"job_id": path.name, "code": "job_session_unreadable"})
 
@@ -170,22 +189,35 @@ def directory(run_path: str, *, job_id: str | None = None, limit: int = 100,
         ],
         "session_registry": {"version": 1, "count": len(records),
                              "digest": registry.digest(records)},
+        "capability_registry": {"version": 1, "count": len(capability_records),
+                                 "records": capability_records},
         "counts": {"indexed_jobs": len(job_dirs), "returned_sessions": len(rows),
                    "errors": len(errors)},
         "errors": errors, "offset": offset, "next_offset": next_offset,
         "has_more": len(job_dirs) > next_offset, "digest": digest,
         "scope": "registered jobs in this run only; no global HOME or native transcript scan",
         "executes_commands": False, "writes_host": False,
-        "host_capabilities": [
-            {"host": host, "profile": profile, "session_store_isolation": "unknown",
-             "native_history_visibility": "unknown", "archive": "unverified", "resume": "unverified"}
-            for host, profile in (("codex", "default"), ("omp", "default"),
-                                  ("hermes", "default"), ("opencode", "omo"),
-                                  ("opencode", "pure"))
-        ],
+        "host_capabilities": [_capability_summary(host, profile, capability_records)
+                              for host, profile in (("codex", "default"), ("omp", "default"),
+                                                    ("hermes", "default"), ("opencode", "omo"),
+                                                    ("opencode", "pure"))],
         "archive": {"supported": False, "mode": "dry_run_only"},
         "recovery": {"supported": False, "mode": "preview_only"},
         "note": "Main coordinator sessions and parent-child links are shown only when explicitly registered; none are inferred.",
+}
+
+
+def _capability_summary(host: str, profile: str,
+                        records: list[dict[str, Any]]) -> dict[str, Any]:
+    values = capabilities.by_host_profile(records, host, profile)
+    return {
+        "host": host, "profile": profile,
+        "session_store_isolation": values.get("session_store_isolation", {}).get("status", "unknown"),
+        "native_history_visibility": values.get("native_history_visibility", {}).get("status", "unknown"),
+        "archive": values.get("archive", {}).get("status", "unknown"),
+        "resume": values.get("resume", {}).get("status", "unknown"),
+        "archive_descendants": values.get("archive_descendants", {}).get("status", "unknown"),
+        "evidence_read": values.get("evidence_read", {}).get("status", "unknown"),
     }
 
 

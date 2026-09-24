@@ -9,6 +9,7 @@ import sys
 from unittest.mock import patch
 
 from test_token_tools import ToolCase
+import capabilities
 import jobs
 import protocol
 import runs
@@ -203,6 +204,43 @@ class SessionDirectoryTests(ToolCase):
         row = sessions.directory(self.run["run_path"], job_id=state["job_id"])["sessions"][0]
         self.assertEqual(row["native_identity"]["status"], "identity_conflict")
         self.assertIn("native_identity_conflict", row["archive_preview"]["blockers"])
+
+    def test_capability_registry_is_explicit_and_feeds_dry_run(self):
+        _, state = self.add_job()
+        evidence = str(self.root / "probe.json")
+        registry.register(self.run["run_path"], registration_id="b" * 32,
+                          host="hermes", store="/state/worker", profile="private-profile",
+                          session_id="native-session-1", role="worker", job_id=state["job_id"],
+                          round_id=state["round_id"])
+        resume = capabilities.register(
+            self.run["run_path"], host="hermes", profile="private-profile",
+            capability="resume", status="verified", evidence_path=evidence,
+            observed_at="2026-09-24T00:00:00Z", host_version="0.21.3")
+        archive = capabilities.register(
+            self.run["run_path"], host="hermes", profile="private-profile",
+            capability="archive", status="verified", evidence_path=evidence,
+            observed_at="2026-09-24T00:00:00Z", host_version="0.21.3")
+        self.assertEqual(capabilities.list_records(self.run["run_path"]),
+                         sorted([archive, resume], key=lambda item: item["record_id"]))
+        view = sessions.directory(self.run["run_path"], job_id=state["job_id"])
+        row = view["sessions"][0]
+        self.assertEqual(row["recovery_preview"]["dry_run"]["blockers"], [])
+        self.assertTrue(row["recovery_preview"]["dry_run"]["eligible"])
+        self.assertEqual(row["archive_preview"]["capability_status"], "verified")
+        self.assertEqual(view["capability_registry"]["count"], 2)
+        self.assertEqual(view["capability_registry"]["records"],
+                         sorted([archive, resume], key=lambda item: item["record_id"]))
+
+    def test_verified_capability_requires_evidence_and_conflicts_are_rejected(self):
+        with self.assertRaises(ValueError):
+            capabilities.register(self.run["run_path"], host="codex", profile="default",
+                                  capability="resume", status="verified")
+        record = capabilities.register(self.run["run_path"], host="codex", profile="default",
+                                       capability="resume", status="declared")
+        with self.assertRaises(ValueError):
+            capabilities.register(self.run["run_path"], host="codex", profile="default",
+                                  capability="resume", status="unsupported", note="changed")
+        self.assertEqual(capabilities.list_records(self.run["run_path"]), [record])
 
     def test_external_user_session_is_unowned_and_parent_must_exist(self):
         external = registry.register(

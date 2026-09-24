@@ -52,10 +52,16 @@ store、profile、精确 session ID、角色及关系；同一登记号的相同
 历史、未知父项和不完整原生定位均拒绝登记。目录把已登记记录放在 `registrations` 和对应
 job 行中，历史未登记的行继续显示 unknown。
 
-这仍不是完整 UX-02a：五配置能力目前明确标记 `unknown/unverified`，不是已运行的宿主探针
-结果；尚无动态宿主能力注册表、启动策略、逐项可执行归档 dry-run，也不能恢复原生会话。
-登记只提供可审计身份和关系，不把登记本身当作恢复或归档许可。相应验收仍留在综合计划，
-不把目录行数当作宿主 picker 已清理。
+`capability-registry/` 现在可以按 host＋profile 登记 `session_store_isolation`、
+`native_history_visibility`、`resume`、`archive`、派生范围和证据读取能力。`declared`、
+`unknown`、`unsupported` 不会解除门禁；只有带证据引用和观察时间的 `verified` 才能解除
+对应 dry-run blocker。目录仍显示五配置矩阵，未登记配置保持 unknown；登记能力不会启动
+宿主命令，也不会改变 native 历史。
+
+这仍不是完整 UX-02a：能力记录是显式证据 sidecar，不是本机自动探针或 adapter 结果；尚无
+启动策略、可执行归档/恢复，也不能恢复原生会话。当前 dry-run 只判断身份、job 状态、能力和
+消息责任是否满足前置条件，`available` 仍为 false。登记只提供可审计身份和关系，不把登记
+本身当作恢复或归档许可。相应验收仍留在综合计划，不把目录行数当作宿主 picker 已清理。
 
 不通过全局删除旧会话、关闭日志、默认 ephemeral、修改宿主数据库或打本体补丁来
 整理列表。Git worktree 按代码隔离需要使用，不为了隐藏会话伪造 cwd 或改变项目指令范围。
