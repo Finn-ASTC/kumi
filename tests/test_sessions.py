@@ -12,6 +12,7 @@ from test_token_tools import ToolCase
 import jobs
 import protocol
 import runs
+import registry
 import sessions
 
 
@@ -152,3 +153,86 @@ class SessionDirectoryTests(ToolCase):
             view = sessions.directory(self.run["run_path"])
         self.assertEqual(view["errors"][0]["code"], "job_session_unreadable")
         self.assertNotIn("PRIVATE FAILURE DETAIL", json.dumps(view))
+
+    def test_explicit_registry_records_host_store_role_and_parent(self):
+        _, state = self.add_job()
+        coordinator_id = "1" * 32
+        worker_id = "2" * 32
+        coordinator = registry.register(
+            self.run["run_path"], registration_id=coordinator_id,
+            host="omp", store="/state/kumi/main", profile="default",
+            session_id="coord-session", role="coordinator", job_id=state["job_id"],
+            round_id=state["round_id"], now="2026-09-24T00:00:00Z")
+        worker = registry.register(
+            self.run["run_path"], registration_id=worker_id,
+            host="hermes", store="/state/kumi/worker", profile="private",
+            session_id="worker-session", role="worker", job_id=state["job_id"],
+            round_id=state["round_id"], parent_registration_id=coordinator_id,
+            relationship="kumi_delegation", label="Implement parser · Hermes · 2222",
+            now="2026-09-24T00:00:01Z")
+        self.assertEqual(coordinator["kind"], "managed")
+        self.assertEqual(worker["parent_registration_id"], coordinator_id)
+        self.assertEqual(registry.list_records(self.run["run_path"]), [coordinator, worker])
+        self.assertEqual(registry.digest([coordinator, worker]), registry.digest([coordinator, worker]))
+
+        view = sessions.directory(self.run["run_path"], job_id=state["job_id"])
+        row = view["sessions"][0]
+        self.assertEqual(row["role"], "worker")
+        self.assertEqual(row["relationship"], "kumi_delegation")
+        self.assertEqual(row["native_identity"]["host"], "hermes")
+        self.assertEqual(row["native_identity"]["store"], "/state/kumi/worker")
+        self.assertEqual(view["session_registry"]["count"], 2)
+
+    def test_registry_retry_is_idempotent_but_identity_conflict_fails(self):
+        _, state = self.add_job()
+        args = dict(run_path=self.run["run_path"], registration_id="3" * 32,
+                    host="codex", store="/state/codex", profile="default",
+                    session_id="same", role="worker", job_id=state["job_id"],
+                    round_id=state["round_id"])
+        first = registry.register(**args)
+        self.assertEqual(registry.register(**args), first)
+        with self.assertRaises(ValueError):
+            registry.register(**{**args, "session_id": "different"})
+
+    def test_directory_does_not_treat_mismatched_native_identity_as_bound(self):
+        _, state = self.add_job()
+        registry.register(self.run["run_path"], registration_id="a" * 32,
+                          host="hermes", store="/state", profile="private",
+                          session_id="other-session", role="worker", job_id=state["job_id"],
+                          round_id=state["round_id"])
+        row = sessions.directory(self.run["run_path"], job_id=state["job_id"])["sessions"][0]
+        self.assertEqual(row["native_identity"]["status"], "identity_conflict")
+        self.assertIn("native_identity_conflict", row["archive_preview"]["blockers"])
+
+    def test_external_user_session_is_unowned_and_parent_must_exist(self):
+        external = registry.register(
+            self.run["run_path"], registration_id="4" * 32, host="codex",
+            store="/home/user", profile="default", session_id="user-session",
+            role="user", kind="external", label="User main session")
+        self.assertIsNone(external["job_id"])
+        _, state = self.add_job()
+        with self.assertRaises(ValueError):
+            registry.register(self.run["run_path"], registration_id="5" * 32,
+                              host="omp", store="/state", profile="default",
+                              session_id="worker", role="worker", job_id=state["job_id"],
+                              round_id=state["round_id"], parent_registration_id="8" * 32,
+                              relationship="kumi_delegation")
+        self.assertEqual(registry.list_records(self.run["run_path"]), [external])
+
+    def test_registry_rejects_closed_job_and_relationship_cycle(self):
+        _, state = self.add_job()
+        # Closing through the normal protocol is intentionally avoided here: a
+        # synthetic terminal snapshot still exercises the registration guard.
+        evidence_path = self.root / "closure-evidence.json"
+        evidence_path.write_text("{}", encoding="utf-8")
+        index = Path(self.run["index_path"])
+        state = jobs.change(index, state["job_id"], state["revision"],
+                            state["lease"]["token"], "close",
+                            {"outcome": "failed", "note": "test closure",
+                             "evidence_path": str(evidence_path)},
+                            now=self.now + 2)
+        with self.assertRaises(ValueError):
+            registry.register(self.run["run_path"], registration_id="9" * 32,
+                              host="omp", store="/state", profile="default",
+                              session_id="closed", role="worker", job_id=state["job_id"],
+                              round_id=state["round_id"])
