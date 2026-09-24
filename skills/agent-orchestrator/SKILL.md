@@ -53,6 +53,8 @@ The returned JSON contains `request_path`, `prompt_path`, `result_path`, IDs and
 
 Initial preparation defaults to a private persistent run and returns `run_path`/`index_path`. For multiple children, initialize one run with `scripts/runs.py init` and pass `--run "$RUN_FILE"` to their prepares. Follow-ups inherit it. See [persistent runs](references/runs.md) for storage overrides and explicit temporary experiments. Register each unsent initial request with `scripts/jobs.py register` using that run's index, then claim before launch/input. Follow the [submission index recipe](references/submission.md); `prepared` is not proof of submission.
 
+To inspect registered work sessions without reading transcripts or changing host history, run `python3 scripts/sessions.py --run "$RUN_FILE" --limit 100 --offset 0`. This is a read-only directory and resume/archive preview. Host, profile/store identity, roles, or parent relationships that were not recorded remain `unknown`; do not use a preview as permission to resume or archive.
+
 For a structured brief, replace `--task-file` with `--task-packet "$PACKET"`: required objective/scope/acceptance and optional inputs/known_facts/constraints. `--brief` removes the redundant controller-facing task echo; the child still receives the complete contract. See [task packets](references/efficiency.md#small-task-packets).
 
 ### 2. Start and record the target
